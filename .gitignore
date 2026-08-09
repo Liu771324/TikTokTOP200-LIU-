@@ -1,0 +1,7 @@
+node_modules/
+.edge-path.txt
+data/tasks/*.json
+data/checkpoints/*.json
+reports/*.json
+reports/*.xlsx
+logs/*.log

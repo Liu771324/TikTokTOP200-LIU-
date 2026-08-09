@@ -1,0 +1,21 @@
+{
+  "name": "doudian-top200-collector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "抖音电商罗盘商品 TOP200 本地采集工具",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "check": "node --check server.js && node --check edge.js && node --check collector.js && node --check collector-utils.js && node --check task-store.js && node --check export-excel.js && npm test"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "playwright-core": "1.58.2"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
