@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>成本助手</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="管理台导航">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">CA</span>
+        <div>
+          <strong>成本助手</strong>
+          <small>本机管理台</small>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" type="button" data-page="overview">
+          <span class="nav-index">01</span><span>运行概览</span>
+        </button>
+        <button class="nav-item" type="button" data-page="catalog">
+          <span class="nav-index">02</span><span>今日成本更新</span>
+        </button>
+        <button class="nav-item" type="button" data-page="mapping">
+          <span class="nav-index">03</span><span>抖店商品对应关系</span>
+        </button>
+        <button class="nav-item" type="button" data-page="history">
+          <span class="nav-index">04</span><span>更新历史</span>
+        </button>
+        <button class="nav-item" type="button" data-page="logs">
+          <span class="nav-index">05</span><span>运行日志</span>
+        </button>
+        <!-- RELEASE_EXCLUDE_START: v2 -->
+        <button class="nav-item" type="button" data-page="service-fee">
+          <span class="nav-index">06</span><span>基础服务费</span>
+        </button>
+        <button class="nav-item" type="button" data-page="shipping">
+          <span class="nav-index">07</span><span>运费模板</span>
+        </button>
+        <!-- RELEASE_EXCLUDE_END: v2 -->
+        <!-- RELEASE_EXCLUDE_START: reviews -->
+        <button class="nav-item" type="button" data-page="reviews">
+          <span class="nav-index">08</span><span>人工核验</span>
+        </button>
+        <!-- RELEASE_EXCLUDE_END: reviews -->
+      </nav>
+
+      <div class="ledger-rule" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="sidebar-note">
+        <strong>抖店侧始终只读</strong>
+        <span>写入前必须预览并确认</span>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">COST LEDGER / LOCAL CONTROL</p>
+          <h1 id="page-title">运行概览</h1>
+        </div>
+        <div id="service-pill" class="service-pill checking" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div><strong id="service-status">正在检查本机服务</strong><small id="service-detail">窗口打开后会自动启动或接管</small></div>
+        </div>
+      </header>
+
+      <section id="page-overview" class="page active" data-title="运行概览">
+        <div class="page-intro">
+          <div>
+            <p class="section-kicker">本机成本流水线</p>
+            <h2>今天的数据，是否可以放心使用？</h2>
+            <p>成本助手负责本机资料和唯一服务；浏览器只查询成本，不承担管理写入。</p>
+          </div>
+          <button id="refresh-state" class="button secondary" type="button">立即刷新</button>
+        </div>
+
+        <dl class="metric-grid">
+          <div><dt>当前环境</dt><dd id="metric-environment">—</dd><span>明确区分测试与正式数据</span></div>
+          <div><dt>启用成本商品</dt><dd id="metric-products">—</dd><span>普通与组合商品合并结果</span></div>
+          <div><dt>已验证抖店 SKU</dt><dd id="metric-mappings">—</dd><span>只计入逐字符一致映射</span></div>
+          <div><dt>最近成本更新</dt><dd id="metric-updated" class="time-value">—</dd><span>数据过旧时先停止业务判断</span></div>
+        </dl>
+
+        <div class="overview-grid">
+          <article class="card service-card">
+            <div class="card-heading">
+              <div><p class="section-kicker">服务控制</p><h3>唯一的本机服务</h3></div>
+              <span class="local-address">127.0.0.1</span>
+            </div>
+            <p>软件会自动启动或接管端口上的正确服务。只有本窗口启动的服务，才允许由本窗口停止。</p>
+            <div class="button-row">
+              <button id="start-service" class="button primary" type="button">启动 / 接管服务</button>
+              <button id="stop-service" class="button danger" type="button" disabled>停止本窗口服务</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="page-catalog" class="page" data-title="今日成本更新" hidden>
+        <div class="page-intro">
+          <div>
+            <p class="section-kicker">普通 / 组合双表</p>
+            <h2>两份表，作为一个批次更新</h2>
+            <p>必须来自同一次导出。预览只读；确认时复核文件、先备份，再以一个事务原子发布。</p>
+          </div>
+          <span class="rule-badge">缺一份即拦截</span>
+        </div>
+
+        <div class="file-pair">
+          <button class="file-slot" type="button" data-file-kind="ordinary">
+            <span class="slot-label">普通商品表</span>
+            <strong id="ordinary-name">选择 XLSX 文件</strong>
+            <small>商品编码 · 商品名称 · 成本价 · 商品状态</small>
+            <span class="choose-hint">选择文件 <b aria-hidden="true">↗</b></span>
+          </button>
+          <div class="pair-bridge" aria-hidden="true"><span>同批</span></div>
+          <button class="file-slot" type="button" data-file-kind="combination">
+            <span class="slot-label">组合商品表</span>
+            <strong id="combination-name">选择 XLSX 文件</strong>
+            <small>组合编码 · 权威组合成本 · 子商品明细</small>
+            <span class="choose-hint">选择文件 <b aria-hidden="true">↗</b></span>
+          </button>
+        </div>
+
+        <div class="action-bar">
+          <button id="preview-catalog" class="button primary" type="button" disabled>只读预览</button>
+          <p id="catalog-progress" role="status" aria-live="polite">请先选择同一天的两份商品表。</p>
+        </div>
+
+        <section id="catalog-preview" class="preview-card" hidden>
+          <div class="preview-heading">
+            <div><p class="section-kicker">配对检查结果</p><h3 id="catalog-preview-title">等待预览</h3><p id="catalog-preview-guidance"></p></div>
+            <span id="catalog-preview-seal" class="preview-seal">预览</span>
+          </div>
+          <dl class="preview-metrics five">
+            <div><dt>普通商品</dt><dd id="catalog-ordinary">—</dd></div>
+            <div><dt>组合明细 → 商品</dt><dd id="catalog-combination">—</dd></div>
+            <div><dt>合并唯一商品</dt><dd id="catalog-merged">—</dd></div>
+            <div><dt>空成本</dt><dd id="catalog-empty">—</dd></div>
+            <div><dt>安全补全重叠</dt><dd id="catalog-resolved">—</dd></div>
+          </dl>
+          <div class="change-strip"><span>相对当前库</span><strong id="catalog-changes">—</strong></div>
+          <div id="catalog-conflicts" class="alert danger-alert" hidden></div>
+          <div class="confirm-row"><p>确认后会先创建可恢复备份；任一步失败都继续使用上一份完整数据。</p><button id="apply-catalog" class="button primary" type="button" disabled>确认原子更新</button></div>
+        </section>
+        <div id="catalog-result" class="result-box" role="status" aria-live="polite" hidden></div>
+      </section>
+
+      <section id="page-mapping" class="page" data-title="抖店商品对应关系" hidden>
+        <div class="page-intro">
+          <div>
+            <p class="section-kicker">按店铺完整替换</p>
+            <h2>把当前店铺的完整商品表加入对应库</h2>
+            <p>新店新增，同店完整替换；其他店铺不动。店铺名必须由操作者明确填写或选择。</p>
+          </div>
+          <span class="rule-badge">逐字符精确匹配</span>
+        </div>
+
+        <article class="card mapping-inputs">
+          <label class="field-label" for="shop-name"><span>固定店铺名称</span><small>同一家店始终使用同一个名称</small></label>
+          <input id="shop-name" list="known-shops" maxlength="80" autocomplete="off" placeholder="填写名称，或从已知店铺选择">
+          <datalist id="known-shops"></datalist>
+          <button class="file-slot compact" type="button" data-file-kind="mapping">
+            <span class="slot-label">该店完整抖店商品表</span>
+            <strong id="mapping-name">选择 XLSX 文件</strong>
+            <small>商品 ID · 商家 SKU 编码 · 规格 ID（SKUID）</small>
+            <span class="choose-hint">选择文件 <b aria-hidden="true">↗</b></span>
+          </button>
+        </article>
+
+        <div class="action-bar">
+          <button id="preview-mapping" class="button primary" type="button" disabled>只读预览</button>
+          <p id="mapping-progress" role="status" aria-live="polite">请选择固定店铺名称和该店完整商品表。</p>
+        </div>
+
+        <section id="mapping-preview" class="preview-card" hidden>
+          <div class="preview-heading">
+            <div><p class="section-kicker">店铺对应检查结果</p><h3 id="mapping-preview-title">等待预览</h3><p id="mapping-preview-guidance"></p></div>
+            <span id="mapping-preview-seal" class="preview-seal">预览</span>
+          </div>
+          <dl class="preview-metrics seven">
+            <div><dt>唯一 SKUID</dt><dd id="mapping-total">—</dd></div>
+            <div><dt>精确匹配</dt><dd id="mapping-matched">—</dd></div>
+            <div><dt>本次新增</dt><dd id="mapping-new">—</dd></div>
+            <div><dt>更新 / 移除</dt><dd id="mapping-change">—</dd></div>
+            <div><dt>旧记录</dt><dd id="mapping-existing">—</dd></div>
+            <div><dt>待核验</dt><dd id="mapping-pending">—</dd></div>
+            <div><dt>重复 / 无效</dt><dd id="mapping-errors">—</dd></div>
+          </dl>
+          <dl class="preview-metrics seven" aria-label="真实成本配置完整度">
+            <div><dt>经营大类已识别</dt><dd id="mapping-major-configured">—</dd></div>
+            <div><dt>经营大类未配置</dt><dd id="mapping-major-unconfigured">—</dd></div>
+            <div><dt>类目完整</dt><dd id="mapping-category-complete">—</dd></div>
+            <div><dt>类目缺失</dt><dd id="mapping-category-incomplete">—</dd></div>
+            <div><dt>费率已匹配</dt><dd id="mapping-fee-matched">—</dd></div>
+            <div><dt>费率未配置</dt><dd id="mapping-fee-unconfigured">—</dd></div>
+            <div><dt>费率已停用</dt><dd id="mapping-fee-disabled">—</dd></div>
+          </dl>
+          <div class="change-strip"><span>多店铺规则</span><strong>新店新增 · 同店整表替换 · 其他店铺不变</strong></div>
+          <div id="mapping-conflicts" class="alert danger-alert" hidden></div>
+          <div class="confirm-row"><p>确认替换会写入精确匹配并保存待核验项；若被跨店冲突拦截，可只保存待处理清单。</p><div class="button-row"><button id="save-mapping-reviews" class="button secondary" type="button" disabled>只保存待处理项</button><button id="apply-mapping" class="button primary" type="button" disabled>确认替换该店</button></div></div>
+        </section>
+        <div id="mapping-result" class="result-box" role="status" aria-live="polite" hidden></div>
+      </section>
+
+      <section id="page-history" class="page" data-title="更新历史" hidden>
+        <div class="page-intro">
+          <div>
+            <p class="section-kicker">本机更新账页</p>
+            <h2>每次更新，按完成顺序留痕</h2>
+            <p>统一查看商品成本与店铺映射记录；只有全局最新一次成功更新可以回滚。</p>
+          </div>
+          <button id="refresh-history" class="button secondary" type="button">刷新记录</button>
+        </div>
+
+        <div class="history-boundary" role="note">
+          <strong>受控回滚已开放</strong>
+          <span>系统只接受账页提供的更新标识，并在恢复前复核备份、哈希和数据库完整性。</span>
+        </div>
+        <div id="history-result" class="result-box" role="status" aria-live="assertive" hidden></div>
+        <ol id="history-list" class="history-list" aria-live="polite"></ol>
+        <div id="history-empty" class="history-empty" role="status">正在读取本机更新记录……</div>
+      </section>
+
+      <section id="page-logs" class="page logs-page" data-title="运行日志" hidden>
+        <div class="page-intro">
+          <div>
+            <p class="section-kicker">本机运行日志</p>
+            <h2>只记录运行，不记录业务秘密</h2>
+            <p>显示启动、预览、确认和错误；不记录密钥、Cookie 或完整商品内容。</p>
+          </div>
+          <div class="button-row">
+            <button id="refresh-logs" class="button primary" type="button">刷新日志</button>
+            <button id="open-logs" class="button secondary" type="button">打开日志文件夹</button>
+          </div>
+        </div>
+        <div class="log-frame"><div class="log-toolbar"><span></span><span></span><span></span><strong>cost-assistant.log</strong></div><pre id="log-content">正在读取日志……</pre></div>
+      </section>
+
+      <!-- RELEASE_EXCLUDE_START: v2 -->
+      <section id="page-service-fee" class="page" data-title="基础服务费" hidden>
+        <div class="page-intro">
+          <div>
+            <p class="section-kicker">经营大类 · 四级类目 · 覆盖规则</p>
+            <h2>按官方目录维护完整费率</h2>
+            <p>“/”表示父级规则可覆盖下级；具体类目优先。普通国内店成本只使用基础费率，特定渠道费率仅作来源展示。</p>
+          </div>
+          <div class="button-row">
+            <button id="import-official-service-fee" class="button primary" type="button">导入内置官方目录</button>
+            <button id="archive-legacy-service-fee" class="button danger" type="button">归档无经营大类旧费率</button>
+            <button id="toggle-service-fee-archive" class="button secondary" type="button">查看归档</button>
+            <button id="new-service-fee" class="button secondary" type="button">新建空白版本</button>
+          </div>
+        </div>
+
+        <div class="service-fee-workbench">
+          <aside class="service-fee-library" aria-label="基础服务费版本列表">
+            <div class="service-fee-library-head">
+              <div><p class="section-kicker">费率账页</p><h3>生效版本</h3></div>
+              <button id="refresh-service-fee" class="text-button" type="button">刷新</button>
+            </div>
+            <div class="service-fee-filters">
+              <select id="service-fee-major-filter" aria-label="按经营大类筛选"><option value="">全部经营大类</option></select>
+              <input id="service-fee-search" type="search" placeholder="搜索任一级类目" aria-label="搜索类目">
+              <select id="service-fee-rate-filter" aria-label="按基础费率筛选"><option value="">全部费率</option></select>
+            </div>
+            <div id="service-fee-list" class="service-fee-list" aria-live="polite"></div>
+            <p id="service-fee-empty" class="service-fee-empty">还没有费率版本。先填写右侧表单。</p>
+          </aside>
+
+          <form id="service-fee-form" class="service-fee-form">
+            <input id="service-fee-source-id" type="hidden">
+            <div class="service-fee-form-head">
+              <div><p class="section-kicker">新版本</p><h3 id="service-fee-form-title">新建基础服务费版本</h3></div>
+              <button id="toggle-service-fee" class="button danger" type="button" disabled>停用所选版本</button>
+            </div>
+            <div class="service-fee-categories">
+              <label><span>经营大类</span><input id="service-fee-major-category" maxlength="120" required></label>
+              <label><span>一级类目</span><input id="service-fee-category-1" maxlength="120" required></label>
+              <label><span>二级类目</span><input id="service-fee-category-2" maxlength="120" required></label>
+              <label><span>三级类目</span><input id="service-fee-category-3" maxlength="120" required></label>
+              <label><span>四级类目</span><input id="service-fee-category-4" maxlength="120" required></label>
+            </div>
+            <div class="service-fee-fields">
+              <label><span>基础费率（小数）</span><input id="service-fee-rate" inputmode="decimal" placeholder="0.05 表示 5%" required></label>
+              <label><span>特定渠道费率（仅展示）</span><input id="service-fee-special-rate" inputmode="decimal" placeholder="可留空"></label>
+              <label><span>生效日期</span><input id="service-fee-effective" type="date" required></label>
+              <label><span>备注</span><input id="service-fee-note" maxlength="300" placeholder="例如：抖店基础服务费查询表 2026-09"></label>
+            </div>
+            <div class="service-fee-policy" role="note"><strong>版本规则</strong><span>载入旧版本后保存，会以表单中的新生效日期创建新版本；原记录不修改。</span></div>
+            <div class="service-fee-actions">
+              <p id="service-fee-progress" role="status" aria-live="polite">填写完整四级类目、费率和生效日期后先预览。</p>
+              <button id="preview-service-fee" class="button primary" type="submit">预览新版本</button>
+            </div>
+            <div id="service-fee-result" class="result-box" role="status" aria-live="polite" hidden></div>
+          </form>
+        </div>
+      </section>
+
+      <section id="page-shipping" class="page" data-title="运费模板" hidden>
+        <div class="page-intro">
+          <div>
+            <p class="section-kicker">可复用模板 · 商品ID绑定</p>
+            <h2>运费跟商品走，不跟店铺默认走</h2>
+            <p>基础规则全国适用；特殊地区使用独立首费、续费。“全国包邮”是销售说明，不会把内部运费成本算成 0。</p>
+          </div>
+          <button id="new-shipping-template" class="button secondary" type="button">新建模板</button>
+        </div>
+
+        <div class="shipping-workbench">
+          <aside class="shipping-library" aria-label="运费模板列表">
+            <div class="shipping-library-head">
+              <div><p class="section-kicker">模板账页</p><h3>可复用模板</h3></div>
+              <button id="refresh-shipping" class="text-button" type="button">刷新</button>
+            </div>
+            <div id="shipping-template-list" class="shipping-template-list" aria-live="polite"></div>
+            <p id="shipping-empty" class="shipping-empty">还没有模板。先填写右侧表单。</p>
+          </aside>
+
+          <form id="shipping-form" class="shipping-form">
+            <input id="shipping-template-id" type="hidden">
+            <div class="shipping-form-head">
+              <div><p class="section-kicker">计费规则</p><h3 id="shipping-form-title">新建重量模板</h3></div>
+              <div class="shipping-switches">
+                <label class="shipping-switch"><input id="shipping-enabled" type="checkbox" checked><span>启用模板</span></label>
+              </div>
+            </div>
+
+            <div class="shipping-fields shipping-fields-compact">
+              <label><span>模板名称</span><input id="shipping-name" maxlength="80" autocomplete="off" placeholder="例如：全国通用模板" required></label>
+            </div>
+
+            <div class="shipping-track" aria-label="首重加续重计费轨道">
+              <label class="shipping-step first"><span>01 · 首重</span><strong><input id="shipping-first-weight" inputmode="decimal" value="1" required> kg</strong><small>首费 <input id="shipping-first-fee" inputmode="decimal" value="3" required> 元</small></label>
+              <div class="shipping-track-arrow" aria-hidden="true"><span>超出后</span><b>→</b></div>
+              <label class="shipping-step additional"><span>02 · 每续重</span><strong><input id="shipping-additional-weight" inputmode="decimal" value="1" required> kg</strong><small>续费 <input id="shipping-additional-fee" inputmode="decimal" value="1" required> 元</small></label>
+            </div>
+            <p class="shipping-formula">计算：首费 + ⌈（商品重量 − 首重）÷ 续重⌉ × 续费</p>
+            <div class="shipping-cost-preview" aria-label="重量费用预览">
+              <label><span>试算重量 / kg</span><input id="shipping-preview-weight" inputmode="decimal" value="1.1"></label>
+              <label><span>试算地区</span><input id="shipping-preview-region" placeholder="留空使用基础规则"></label>
+              <output id="shipping-preview-cost">预计内部运费 4 元</output>
+            </div>
+
+            <div class="shipping-rules-head">
+              <div><h4>特殊地区价格</h4><p>未列地区使用基础规则；特殊地区价格独立计算，不与基础价格叠加。</p></div>
+              <button id="add-shipping-rule" class="button secondary" type="button">添加地区</button>
+            </div>
+            <div id="shipping-rule-list" class="shipping-rule-list"></div>
+
+            <div class="shipping-actions">
+              <p id="shipping-progress" role="status" aria-live="polite">填写模板后先预览，本页不会自动保存。</p>
+              <button id="preview-shipping" class="button primary" type="submit">预览并确认</button>
+            </div>
+            <div id="shipping-result" class="result-box" role="status" aria-live="polite" hidden></div>
+          </form>
+        </div>
+
+        <form id="shipping-binding-form" class="shipping-binding-panel">
+          <div class="shipping-form-head">
+            <div><p class="section-kicker">商品绑定</p><h3>把模板分配给抖店商品</h3></div>
+            <strong id="shipping-unbound-count">0 个商品未绑定</strong>
+          </div>
+          <div class="shipping-binding-controls">
+            <label><span>店铺</span><select id="shipping-binding-shop" required></select></label>
+            <label><span>绑定状态</span><select id="shipping-binding-status"><option value="unbound">仅未绑定</option><option value="all">全部商品</option><option value="bound">已绑定</option></select></label>
+            <label><span>商品搜索</span><input id="shipping-binding-search" type="search" placeholder="商品名称或商品 ID"></label>
+            <label><span>运费模板</span><select id="shipping-binding-template" required></select></label>
+          </div>
+          <div id="shipping-product-list" class="shipping-product-list" aria-live="polite"></div>
+          <div class="shipping-actions">
+            <p id="shipping-binding-progress" role="status" aria-live="polite">选择店铺、模板和商品后先预览。</p>
+            <button class="button primary" type="submit">预览并绑定</button>
+          </div>
+        </form>
+      </section>
+      <!-- RELEASE_EXCLUDE_END: v2 -->
+
+      <!-- RELEASE_EXCLUDE_START: reviews -->
+      <section id="page-reviews" class="page" data-title="人工核验" hidden>
+        <div class="page-intro">
+          <div>
+            <p class="section-kicker">待处理映射账页</p>
+            <h2>看清旧关系，再确认一条新关系</h2>
+            <p>只显示导入时保存的待核验和跨店冲突。每次人工关联都会校验启用商品、复核原映射并先创建恢复备份。</p>
+          </div>
+          <button id="refresh-reviews" class="button secondary" type="button">刷新清单</button>
+        </div>
+        <div class="review-summary" role="status"><span>当前未处理</span><strong id="review-total">—</strong><small>页面最多展示最近 200 条，冲突优先。</small></div>
+        <div id="review-list" class="review-list" aria-live="polite"></div>
+        <div id="review-empty" class="history-empty" role="status">正在读取待处理清单……</div>
+      </section>
+      <!-- RELEASE_EXCLUDE_END: reviews -->
+
+      <footer class="footer"><span id="activity">等待桥接就绪</span><span>LOCAL · WEBVIEW2 · 127.0.0.1</span></footer>
+    </main>
+  </div>
+
+  <dialog id="confirm-dialog">
+    <form method="dialog">
+      <p class="section-kicker">再次确认</p>
+      <h2 id="confirm-title">确认操作</h2>
+      <p id="confirm-message"></p>
+      <div class="dialog-actions"><button class="button secondary" value="cancel">取消</button><button id="confirm-accept" class="button primary" value="confirm">确认</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="alert" aria-live="assertive" hidden></div>
+  <script src="refresh_model.js"></script>
+  <!-- RELEASE_EXCLUDE_START: v2 -->
+  <script src="shipping_filters.js"></script>
+  <!-- RELEASE_EXCLUDE_END: v2 -->
+  <script src="app.js"></script>
+</body>
+</html>

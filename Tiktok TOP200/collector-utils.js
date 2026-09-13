@@ -112,9 +112,19 @@ function inferRank(rankText, pageNumber, rowIndex, pageSize) {
 function choosePeriod(periods = []) {
   const available = periods.filter((period) => !period.disabled);
   const realtime = available.find((period) => period.value === 'realTime' || cleanText(period.label) === '实时');
-  if (realtime) return { requestedPeriod: '实时', actualPeriod: cleanText(realtime.label) || '实时', value: realtime.value };
+  if (realtime) return {
+    requestedPeriod: '实时',
+    actualPeriod: cleanText(realtime.label) || '实时',
+    value: realtime.value,
+    ...(realtime.control ? { control: realtime.control } : {}),
+  };
   const oneDay = available.find((period) => period.value === 'one' || cleanText(period.label) === '近1天');
-  if (oneDay) return { requestedPeriod: '实时', actualPeriod: cleanText(oneDay.label) || '近1天', value: oneDay.value };
+  if (oneDay) return {
+    requestedPeriod: '实时',
+    actualPeriod: cleanText(oneDay.label) || '近1天',
+    value: oneDay.value,
+    ...(oneDay.control ? { control: oneDay.control } : {}),
+  };
   return null;
 }
 

@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>商机采集驾驶舱</title>
+  <style>
+    :root {
+      --navy: #14263b; --navy-2: #20364d; --ink: #1b2733; --muted: #66727e;
+      --paper: #f2f5f3; --card: #ffffff; --line: #d9e0dd; --teal: #0e7c72;
+      --green: #2f9668; --amber: #c98a24; --red: #b84d52;
+      --shadow: 0 12px 32px rgba(20, 38, 59, .08); --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    html { min-width: 320px; }
+    body {
+      margin: 0; min-height: 100vh; color: var(--ink);
+      background:
+        linear-gradient(rgba(20, 38, 59, .025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(20, 38, 59, .025) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 3px solid rgba(14, 124, 114, .25); outline-offset: 2px;
+    }
+    .masthead { background: var(--navy); color: #fff; border-bottom: 4px solid var(--teal); }
+    .masthead-inner {
+      max-width: 1420px; margin: auto; padding: 21px 28px 19px;
+      display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    }
+    .brand-kicker {
+      color: #8fd4ca; font-family: Bahnschrift, "Segoe UI", sans-serif;
+      font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+    }
+    h1 {
+      margin: 5px 0 0; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif;
+      font-size: clamp(22px, 3vw, 32px); line-height: 1.1; letter-spacing: .02em;
+    }
+    .auth-box { display: flex; align-items: center; gap: 10px; }
+    .auth-light {
+      width: 9px; height: 9px; border-radius: 50%; background: #8390a0;
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, .07);
+    }
+    .auth-light.ready { background: #5ed39a; box-shadow: 0 0 0 4px rgba(94, 211, 154, .14); }
+    .auth-light.checking { background: #e0a84c; animation: pulse 1.1s infinite; }
+    .auth-label { font-size: 12px; color: #c8d1da; }
+    .shell {
+      max-width: 1420px; margin: 0 auto; padding: 24px 28px 44px;
+      display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 22px; align-items: start;
+    }
+    .control-column { position: sticky; top: 18px; display: grid; gap: 16px; }
+    .workspace { min-width: 0; display: grid; gap: 16px; }
+    .panel {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: var(--radius); box-shadow: var(--shadow);
+    }
+    .panel-pad { padding: 20px; }
+    .section-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 12px; margin-bottom: 16px;
+    }
+    .section-head h2, .section-head h3 { margin: 0; font-size: 16px; }
+    .section-note { color: var(--muted); font-size: 11px; }
+    .form-grid { display: grid; gap: 14px; }
+    .field { display: grid; gap: 7px; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { font-size: 12px; font-weight: 700; color: #435160; }
+    input, select {
+      width: 100%; height: 42px; border: 1px solid #cfd8d4; border-radius: 7px;
+      background: #fbfcfb; color: var(--ink); padding: 0 11px;
+      transition: border-color .16s, box-shadow .16s;
+    }
+    input:focus, select:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(14, 124, 114, .10); }
+    .field-help { margin: -2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .button {
+      min-height: 40px; border: 1px solid transparent; border-radius: 7px; padding: 0 15px;
+      color: #fff; background: var(--teal); font-weight: 700;
+      transition: transform .16s, background .16s, opacity .16s;
+    }
+    .button:hover:not(:disabled) { transform: translateY(-1px); background: #096b63; }
+    .button:disabled { cursor: not-allowed; opacity: .42; transform: none; }
+    .button.ghost { color: var(--navy); background: #fff; border-color: #bec9c5; }
+    .button.ghost:hover:not(:disabled) { background: #f3f6f4; }
+    .button.warn { color: var(--red); background: #fff; border-color: #e1b9bc; }
+    .button.full { width: 100%; min-height: 46px; }
+    .button.small { min-height: 34px; padding: 0 11px; font-size: 12px; }
+    .control-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+    .quiet-rule { height: 1px; background: var(--line); margin: 18px 0; }
+    .safety-note {
+      padding: 14px 15px; border-left: 3px solid var(--amber); background: #fff8e9;
+      color: #65502e; font-size: 12px; line-height: 1.65;
+    }
+    .route-panel { overflow: hidden; }
+    .route-top {
+      padding: 20px 22px 17px; display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line);
+    }
+    .task-eyebrow { color: var(--teal); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+    .task-name { margin-top: 5px; font-size: 18px; font-weight: 800; overflow-wrap: anywhere; }
+    .task-sub { margin-top: 7px; color: var(--muted); font-size: 12px; }
+    .state-pill {
+      flex: 0 0 auto; border: 1px solid #cbd4d1; border-radius: 999px; padding: 6px 10px;
+      color: #56626d; background: #f7f9f8; font-size: 11px; font-weight: 800;
+    }
+    .state-pill.running { color: #087267; border-color: #9acfc7; background: #e9f7f4; }
+    .state-pill.paused, .state-pill.authenticating { color: #8b5d10; border-color: #e5c68d; background: #fff7e7; }
+    .state-pill.failed { color: #993d43; border-color: #e5b7ba; background: #fff0f1; }
+    .state-pill.completed, .state-pill.sample_completed { color: #26764f; border-color: #add5be; background: #eef9f2; }
+    .route-track {
+      position: relative; padding: 22px 24px 21px; display: grid;
+      grid-template-columns: repeat(5, 1fr); gap: 4px; background: #fbfcfb;
+    }
+    .route-line { position: absolute; left: 10%; right: 10%; top: 35px; height: 2px; background: #d3dcd8; }
+    .route-line::after {
+      content: ""; position: absolute; left: 0; top: 0; height: 2px;
+      width: var(--route-progress, 0%); background: var(--teal); transition: width .35s ease;
+    }
+    .route-step { position: relative; z-index: 1; text-align: center; color: #8a949c; font-size: 11px; }
+    .route-dot {
+      width: 14px; height: 14px; margin: 6px auto 9px; border: 3px solid #d3dcd8;
+      border-radius: 50%; background: #fbfcfb;
+    }
+    .route-step.active { color: var(--teal); font-weight: 800; }
+    .route-step.active .route-dot { border-color: var(--teal); box-shadow: 0 0 0 5px rgba(14, 124, 114, .09); }
+    .route-step.done .route-dot { border-color: var(--teal); background: var(--teal); }
+    .route-panel.scanning .route-line::before {
+      content: ""; position: absolute; top: -3px; width: 8px; height: 8px;
+      border-radius: 50%; background: #5ac3b4; animation: scan 2.2s linear infinite;
+    }
+    .metrics { display: grid; grid-template-columns: repeat(6, minmax(100px, 1fr)); gap: 10px; }
+    .metric { padding: 14px 15px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); }
+    .metric-label { color: var(--muted); font-size: 11px; }
+    .metric-value { margin-top: 6px; font: 700 24px/1 Bahnschrift, "Segoe UI", sans-serif; color: var(--navy); }
+    .metric.good .metric-value { color: var(--green); }
+    .metric.bad .metric-value { color: var(--red); }
+    .class-grid {
+      display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px;
+      border: 1px solid var(--line); background: var(--line); border-radius: 9px; overflow: hidden;
+    }
+    .class-cell { min-width: 0; padding: 13px 12px; background: #fff; }
+    .class-name { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .class-count { margin-top: 4px; font: 700 18px Bahnschrift, sans-serif; color: var(--navy); }
+    .lower-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(310px, .75fr); gap: 16px; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th {
+      position: sticky; top: 0; z-index: 1; background: var(--navy); color: #fff;
+      text-align: left; font-size: 11px; padding: 10px 11px; white-space: nowrap;
+    }
+    td { padding: 10px 11px; border-bottom: 1px solid #e6ebe8; vertical-align: top; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .empty { padding: 34px 20px; text-align: center; color: var(--muted); }
+    .class-tag { display: inline-block; padding: 3px 7px; border-radius: 999px; font-size: 10px; background: #edf2f0; }
+    .class-tag.up { color: #26764f; background: #e7f5ed; }
+    .class-tag.down { color: #a1454a; background: #faecec; }
+    .log {
+      height: 314px; overflow: auto; padding: 13px 14px; border-radius: 8px;
+      background: #111d2a; color: #c5d0d9; font: 12px/1.65 Consolas, "Microsoft YaHei UI", monospace;
+    }
+    .log-line { display: grid; grid-template-columns: 72px 1fr; gap: 9px; }
+    .log-time { color: #6f8394; }
+    .log-message { overflow-wrap: anywhere; }
+    .report-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .history-list { display: grid; gap: 8px; }
+    .history-item { padding: 11px 12px; border: 1px solid var(--line); border-radius: 7px; background: #fbfcfb; }
+    .history-name { font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+    .history-meta { margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .toast {
+      position: fixed; right: 24px; bottom: 22px; max-width: min(420px, calc(100vw - 48px));
+      padding: 12px 15px; border-radius: 8px; background: var(--navy); color: #fff;
+      box-shadow: 0 12px 28px rgba(20, 38, 59, .2); font-size: 12px;
+      transform: translateY(18px); opacity: 0; pointer-events: none; transition: .2s ease;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.error { background: var(--red); }
+    @keyframes scan { from { left: 0; } to { left: calc(100% - 8px); } }
+    @keyframes pulse { 50% { opacity: .45; } }
+    @media (max-width: 1080px) {
+      .shell { grid-template-columns: 320px minmax(0, 1fr); padding-inline: 18px; }
+      .metrics { grid-template-columns: repeat(3, 1fr); }
+      .class-grid { grid-template-columns: repeat(3, 1fr); }
+      .lower-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .masthead-inner { padding-inline: 18px; align-items: flex-start; }
+      .auth-label { display: none; }
+      .shell { grid-template-columns: 1fr; padding: 16px 12px 34px; }
+      .control-column { position: static; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .route-track { padding-inline: 10px; }
+      .route-step span { font-size: 10px; }
+      .field-row { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <div>
+        <div class="brand-kicker">Business signal collector / local console</div>
+        <h1>商机采集驾驶舱</h1>
+      </div>
+      <div class="auth-box">
+        <span id="authLight" class="auth-light"></span>
+        <span id="authLabel" class="auth-label">尚未检测登录态</span>
+        <button id="authButton" class="button ghost small" type="button">检测 Edge</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell">
+    <aside class="control-column">
+      <section class="panel panel-pad">
+        <div class="section-head"><h2>任务设置</h2><span class="section-note">一次一个类目</span></div>
+        <form id="taskForm" class="form-grid">
+          <div class="field">
+            <label for="categoryId">一级类目</label>
+            <select id="categoryId" disabled>
+              <option value="1000002718" data-name="传统滋补">正在自动读取类目…</option>
+            </select>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="secondCategoryId">二级类目</label>
+              <select id="secondCategoryId" disabled><option value="0">全部二级类目</option></select>
+            </div>
+            <div class="field">
+              <label for="thirdCategoryId">三级类目</label>
+              <select id="thirdCategoryId" disabled><option value="0">全部三级类目</option></select>
+            </div>
+          </div>
+          <p id="categoryHelp" class="field-help">类目 ID 会自动识别；二级、三级不选时采集上一级的全部商品。</p>
+          <div class="field-row">
+            <div class="field">
+              <label for="minAmount">最低成交金额</label>
+              <input id="minAmount" type="number" value="750000" min="0" step="10000">
+            </div>
+            <div class="field">
+              <label for="maxPages">采集范围</label>
+              <select id="maxPages">
+                <option value="1">1 页小样本</option>
+                <option value="3">3 页验证</option>
+                <option value="0">按阈值采完</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="pageInterval">页间等待（秒）</label>
+              <input id="pageInterval" type="number" value="20" min="0" max="600">
+            </div>
+            <div class="field">
+              <label for="batchSize">指标并发</label>
+              <select id="batchSize">
+                <option value="6">6（默认）</option>
+                <option value="4">4（稳妥）</option>
+                <option value="2">2（保守）</option>
+              </select>
+            </div>
+          </div>
+          <p class="field-help">选择“按阈值采完”后，只有确认整页数据均低于最低金额才会结束。</p>
+          <button id="startButton" class="button full" type="submit">创建任务并开始</button>
+        </form>
+        <div class="control-actions">
+          <button id="pauseButton" class="button ghost small" type="button" disabled>暂停</button>
+          <button id="retryButton" class="button ghost small" type="button" disabled>重试失败</button>
+          <button id="stopButton" class="button warn small" type="button" disabled>停止</button>
+        </div>
+      </section>
+      <div class="safety-note">
+        登录态从 Edge 自动读取，只保存在本次运行内存中。暂停和停止都会先完成当前指标批次，再保存检查点。
+      </div>
+      <section class="panel panel-pad">
+        <div class="section-head"><h3>报告下载</h3><span id="coverageNote" class="section-note">暂无报告</span></div>
+        <div class="report-actions">
+          <button class="button ghost small report-button" data-type="xlsx" disabled>Excel</button>
+          <button class="button ghost small report-button" data-type="markdown" disabled>Markdown</button>
+          <button class="button ghost small report-button" data-type="json" disabled>JSON</button>
+        </div>
+        <div class="quiet-rule"></div>
+        <div class="section-head"><h3>最近任务</h3><button id="refreshHistory" class="button ghost small" type="button">刷新</button></div>
+        <div id="historyList" class="history-list"><div class="empty">尚无任务记录</div></div>
+      </section>
+    </aside>
+
+    <div class="workspace">
+      <section id="routePanel" class="panel route-panel">
+        <div class="route-top">
+          <div>
+            <div class="task-eyebrow">LIVE COLLECTION ROUTE</div>
+            <div id="taskName" class="task-name">等待创建任务</div>
+            <div id="taskSub" class="task-sub">先检测 Edge 登录态，再从左侧开始</div>
+          </div>
+          <span id="statePill" class="state-pill">空闲</span>
+        </div>
+        <div id="routeTrack" class="route-track">
+          <div class="route-line"></div>
+          <div class="route-step" data-step="0"><div class="route-dot"></div><span>认证</span></div>
+          <div class="route-step" data-step="1"><div class="route-dot"></div><span>列表</span></div>
+          <div class="route-step" data-step="2"><div class="route-dot"></div><span>指标</span></div>
+          <div class="route-step" data-step="3"><div class="route-dot"></div><span>检查点</span></div>
+          <div class="route-step" data-step="4"><div class="route-dot"></div><span>报告</span></div>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="任务指标">
+        <div class="metric"><div class="metric-label">当前页</div><div id="metricPage" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">达标</div><div id="metricQualifying" class="metric-value">0</div></div>
+        <div class="metric good"><div class="metric-label">成功</div><div id="metricSuccess" class="metric-value">0</div></div>
+        <div class="metric good"><div class="metric-label">正向增长</div><div id="metricGrowth" class="metric-value">0</div></div>
+        <div class="metric bad"><div class="metric-label">失败</div><div id="metricFailed" class="metric-value">0</div></div>
+        <div class="metric"><div class="metric-label">区间覆盖</div><div id="metricCoverage" class="metric-value">—</div></div>
+      </section>
+
+      <section class="panel panel-pad">
+        <div class="section-head"><h2>分类守恒</h2><span id="classCheck" class="section-note">0 / 0</span></div>
+        <div class="class-grid">
+          <div class="class-cell"><div class="class-name">上涨</div><div id="classUp" class="class-count">0</div></div>
+          <div class="class-cell"><div class="class-name">下跌</div><div id="classDown" class="class-count">0</div></div>
+          <div class="class-cell"><div class="class-name">持平</div><div id="classFlat" class="class-count">0</div></div>
+          <div class="class-cell"><div class="class-name">999.99%+</div><div id="classHigh" class="class-count">0</div></div>
+          <div class="class-cell"><div class="class-name">增速快</div><div id="classFast" class="class-count">0</div></div>
+          <div class="class-cell"><div class="class-name">无法确认</div><div id="classUnknown" class="class-count">0</div></div>
+        </div>
+      </section>
+
+      <div class="lower-grid">
+        <section class="panel panel-pad">
+          <div class="section-head"><h2>最新结果</h2><span class="section-note">最近 10 条</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>产品名称</th><th>近30天</th><th>增长</th><th>分类</th></tr></thead>
+              <tbody id="resultRows"><tr><td colspan="4" class="empty">任务开始后显示结果</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel panel-pad">
+          <div class="section-head"><h2>运行日志</h2><span id="logCount" class="section-note">0 条</span></div>
+          <div id="logBox" class="log" role="log" aria-live="polite">
+            <div class="log-line"><span class="log-time">--:--:--</span><span class="log-message">等待操作</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let snapshot = { phase: "idle", active: false, task: null, logs: [] };
+    let authReady = false;
+    let categoryTree = [];
+    let toastTimer = null;
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: options.body ? { "Content-Type": "application/json", ...(options.headers || {}) } : options.headers,
+      });
+      const data = await response.json();
+      if (!response.ok || data.ok === false) throw new Error(data.message || "操作失败");
+      return data;
+    }
+    function toast(message, error = false) {
+      const node = $("toast");
+      node.textContent = message;
+      node.className = "toast show" + (error ? " error" : "");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { node.className = "toast"; }, 3200);
+    }
+    function stateLabel(value) {
+      return ({
+        idle: "空闲", authenticating: "检测登录态", running: "采集中", paused: "已暂停",
+        stopping: "停止中", stopped: "已停止", completed: "已完成",
+        sample_completed: "样本完成", failed: "失败", pending: "待运行",
+      })[value] || value || "空闲";
+    }
+    function inferRoute(data) {
+      const phase = data.phase;
+      if (["completed", "sample_completed", "stopped", "failed"].includes(phase) && data.task?.reportFiles) return 4;
+      if (phase === "authenticating") return 0;
+      const last = data.logs?.at(-1)?.message || "";
+      if (/报告/.test(last)) return 4;
+      if (/页完成|检查点/.test(last)) return 3;
+      if (/指标|重试/.test(last)) return 2;
+      if (/读取第/.test(last)) return 1;
+      return data.active ? 1 : 0;
+    }
+    function renderRoute(data) {
+      const step = inferRoute(data);
+      const route = $("routeTrack");
+      route.style.setProperty("--route-progress", `${step * 25}%`);
+      route.querySelectorAll(".route-step").forEach((node, index) => {
+        node.classList.toggle("done", index < step);
+        node.classList.toggle("active", index === step);
+      });
+      $("routePanel").classList.toggle("scanning", data.active && data.phase !== "paused");
+    }
+    function number(value) { return Number(value || 0).toLocaleString("zh-CN"); }
+
+    function render(data) {
+      snapshot = data;
+      const task = data.task;
+      const stats = task?.stats || {};
+      const classes = stats.classifications || {};
+      const phase = data.pauseRequested ? "paused" : data.phase;
+      $("statePill").textContent = stateLabel(phase);
+      $("statePill").className = `state-pill ${phase}`;
+      $("taskName").textContent = task?.taskName || "等待创建任务";
+      $("taskSub").textContent = task
+        ? `第 ${task.currentPage || 0} 页 · ${task.authRoute || "等待认证"} · ${task.coverageComplete ? "区间已覆盖" : "区间未覆盖"}`
+        : "先检测 Edge 登录态，再从左侧开始";
+      renderRoute(data);
+      $("metricPage").textContent = number(task?.currentPage);
+      $("metricQualifying").textContent = number(stats.qualifying);
+      $("metricSuccess").textContent = number(stats.success);
+      $("metricGrowth").textContent = number(stats.growth);
+      $("metricFailed").textContent = number(stats.failed);
+      $("metricCoverage").textContent = task ? (task.coverageComplete ? "完成" : "部分") : "—";
+      $("metricCoverage").style.fontSize = "18px";
+      const classMap = {
+        classUp: classes["上涨"], classDown: classes["下跌"], classFlat: classes["持平"],
+        classHigh: classes["999.99%+"], classFast: classes["增速快"], classUnknown: classes["无法确认"],
+      };
+      Object.entries(classMap).forEach(([id, value]) => { $(id).textContent = number(value); });
+      const classTotal = Object.values(classMap).reduce((sum, value) => sum + Number(value || 0), 0);
+      $("classCheck").textContent = `${number(classTotal)} / ${number(stats.success)}`;
+
+      const rows = $("resultRows");
+      rows.replaceChildren();
+      const results = task?.latestResults || [];
+      if (!results.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 4; cell.className = "empty"; cell.textContent = "任务开始后显示结果";
+        row.appendChild(cell); rows.appendChild(row);
+      } else {
+        results.forEach((item) => {
+          const row = document.createElement("tr");
+          [item.productName, item.pay30dRange, item.growth].forEach((value) => {
+            const cell = document.createElement("td"); cell.textContent = value || "-"; row.appendChild(cell);
+          });
+          const classCell = document.createElement("td");
+          const tag = document.createElement("span");
+          tag.className = "class-tag " + (["上涨", "999.99%+", "增速快"].includes(item.classification) ? "up" : (item.classification === "下跌" ? "down" : ""));
+          tag.textContent = item.classification || "-";
+          classCell.appendChild(tag); row.appendChild(classCell); rows.appendChild(row);
+        });
+      }
+
+      const logs = data.logs || [];
+      const logBox = $("logBox");
+      const atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 50;
+      logBox.replaceChildren();
+      logs.slice(-120).forEach((entry) => {
+        const line = document.createElement("div"); line.className = "log-line";
+        const time = document.createElement("span"); time.className = "log-time"; time.textContent = (entry.at || "").slice(11, 19);
+        const message = document.createElement("span"); message.className = "log-message"; message.textContent = entry.message;
+        line.append(time, message); logBox.appendChild(line);
+      });
+      if (!logs.length) logBox.textContent = "等待操作";
+      if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+      $("logCount").textContent = `${logs.length} 条`;
+
+      const active = Boolean(data.active);
+      $("startButton").disabled = active;
+      $("pauseButton").disabled = !active || phase === "stopping";
+      $("pauseButton").textContent = phase === "paused" ? "继续" : "暂停";
+      $("stopButton").disabled = !active || phase === "stopping";
+      $("retryButton").disabled = active || !(stats.failed > 0);
+      document.querySelectorAll(".report-button").forEach((button) => { button.disabled = !task?.reportFiles; });
+      $("coverageNote").textContent = task?.reportFiles ? (task.coverageComplete ? "完整报告" : "部分报告") : "暂无报告";
+    }
+
+    async function poll() {
+      try { render(await api("/api/status")); } catch (error) { toast(error.message, true); }
+    }
+    async function checkAuth() {
+      $("authLight").className = "auth-light checking";
+      $("authLabel").textContent = "正在检测…";
+      $("authButton").disabled = true;
+      try {
+        const data = await api("/api/auth/check", { method: "POST", body: "{}" });
+        authReady = true; $("authLight").className = "auth-light ready";
+        $("authLabel").textContent = data.message;
+        await loadCategories();
+        toast("Edge 登录态和类目列表已就绪");
+        return true;
+      } catch (error) {
+        authReady = false; $("authLight").className = "auth-light";
+        $("authLabel").textContent = error.message; toast(error.message, true);
+        return false;
+      } finally { $("authButton").disabled = false; }
+    }
+
+    async function loadCategories() {
+      const first = $("categoryId");
+      const previous = first.value || "1000002718";
+      first.disabled = true;
+      $("categoryHelp").textContent = "正在从抖店官方类目列表自动识别…";
+      const data = await api("/api/categories");
+      categoryTree = data.categories;
+      first.replaceChildren();
+      categoryTree.forEach((category) => {
+        const option = document.createElement("option");
+        option.value = String(category.id);
+        option.dataset.name = category.name;
+        option.textContent = category.name;
+        first.appendChild(option);
+      });
+      first.value = categoryTree.some((category) => String(category.id) === previous)
+        ? previous : String(categoryTree[0].id);
+      first.disabled = false;
+      updateSecondCategories();
+      $("categoryHelp").textContent = `已自动识别 ${categoryTree.length} 个一级类目，可继续细分到三级。`;
+    }
+
+    function fillChildSelect(select, items, emptyLabel) {
+      select.replaceChildren();
+      const all = document.createElement("option");
+      all.value = "0"; all.textContent = emptyLabel;
+      select.appendChild(all);
+      items.forEach((category) => {
+        const option = document.createElement("option");
+        option.value = String(category.id); option.dataset.name = category.name; option.textContent = category.name;
+        select.appendChild(option);
+      });
+      select.disabled = items.length === 0;
+    }
+
+    function updateSecondCategories() {
+      const first = categoryTree.find((category) => String(category.id) === $("categoryId").value);
+      fillChildSelect($("secondCategoryId"), first?.children || [], "全部二级类目");
+      updateThirdCategories();
+    }
+
+    function updateThirdCategories() {
+      const first = categoryTree.find((category) => String(category.id) === $("categoryId").value);
+      const second = first?.children?.find((category) => String(category.id) === $("secondCategoryId").value);
+      fillChildSelect($("thirdCategoryId"), second?.children || [], "全部三级类目");
+    }
+
+    $("taskForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        if (!authReady && !(await checkAuth())) return;
+        const categoryOptions = [
+          $("categoryId").selectedOptions[0],
+          Number($("secondCategoryId").value) ? $("secondCategoryId").selectedOptions[0] : null,
+          Number($("thirdCategoryId").value) ? $("thirdCategoryId").selectedOptions[0] : null,
+        ].filter(Boolean);
+        const payload = {
+          categoryName: categoryOptions.map((option) => option.dataset.name || option.textContent).join(" / "),
+          categoryId: Number($("categoryId").value),
+          secondCategoryId: Number($("secondCategoryId").value) || null,
+          thirdCategoryId: Number($("thirdCategoryId").value) || null,
+          minAmount: Number($("minAmount").value), maxPages: Number($("maxPages").value),
+          pageInterval: Number($("pageInterval").value), batchSize: Number($("batchSize").value), fresh: true,
+        };
+        await api("/api/task/start", { method: "POST", body: JSON.stringify(payload) });
+        toast("任务已创建"); await poll();
+      } catch (error) { toast(error.message, true); }
+    });
+    $("pauseButton").addEventListener("click", async () => {
+      const action = snapshot.phase === "paused" || snapshot.pauseRequested ? "resume" : "pause";
+      try { await api(`/api/task/${action}`, { method: "POST", body: "{}" }); await poll(); }
+      catch (error) { toast(error.message, true); }
+    });
+    $("stopButton").addEventListener("click", async () => {
+      if (!confirm("停止后会保存当前检查点并生成部分报告。确定停止吗？")) return;
+      try { await api("/api/task/stop", { method: "POST", body: "{}" }); await poll(); }
+      catch (error) { toast(error.message, true); }
+    });
+    $("retryButton").addEventListener("click", async () => {
+      try { await api("/api/task/retry", { method: "POST", body: "{}" }); toast("开始重试失败商品"); await poll(); }
+      catch (error) { toast(error.message, true); }
+    });
+    $("authButton").addEventListener("click", checkAuth);
+    $("categoryId").addEventListener("change", updateSecondCategories);
+    $("secondCategoryId").addEventListener("change", updateThirdCategories);
+    document.querySelectorAll(".report-button").forEach((button) => {
+      button.addEventListener("click", () => { location.href = `/api/download?type=${button.dataset.type}`; });
+    });
+
+    async function loadHistory() {
+      try {
+        const data = await api("/api/history");
+        const list = $("historyList"); list.replaceChildren();
+        if (!data.tasks.length) {
+          const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "尚无任务记录";
+          list.appendChild(empty); return;
+        }
+        data.tasks.slice(0, 5).forEach((task) => {
+          const item = document.createElement("div"); item.className = "history-item";
+          const name = document.createElement("div"); name.className = "history-name"; name.textContent = task.taskName;
+          const meta = document.createElement("div"); meta.className = "history-meta";
+          meta.textContent = `${stateLabel(task.status)} · 第 ${task.currentPage || 0} 页 · 成功 ${task.stats?.success || 0}`;
+          item.append(name, meta); list.appendChild(item);
+        });
+      } catch (error) { toast(error.message, true); }
+    }
+    $("refreshHistory").addEventListener("click", loadHistory);
+    checkAuth(); poll(); loadHistory();
+    setInterval(poll, 1000); setInterval(loadHistory, 12000);
+  </script>
+</body>
+</html>

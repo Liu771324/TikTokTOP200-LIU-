@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+.venv/
+
+# Local credentials and generated business data
+config.*.local.json
+storage/
+logs/
+
+
+# Generated dependencies, release packages, and test outputs
+browser_extension/node_modules/
+browser_extension/debug.log
+build/
+artifacts/
+dist/
+
+# Local business export files
+聚水潭导出表/
+抖店商品导出表/

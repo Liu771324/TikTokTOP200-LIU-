@@ -1,0 +1,21 @@
+[project]
+name = "jushuitan-cost-sync"
+version = "0.1.0"
+description = "聚水潭商品成本价本地同步工具"
+requires-python = ">=3.13"
+dependencies = [
+    "openpyxl>=3.1,<4",
+    "pywebview>=6.2,<7",
+    "requests>=2.32,<3",
+]
+
+[project.scripts]
+jst-cost-sync = "cost_sync.cli:main"
+jst-cost-api = "cost_sync.local_api:main"
+jst-cost-assistant = "cost_sync.desktop_app:main"
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6,<7"]
+
+[tool.setuptools.packages.find]
+include = ["cost_sync*"]

@@ -51,6 +51,17 @@ async function connectTargetPage() {
     throw error;
   }
   await page.bringToFront();
+  await page.waitForTimeout(2000);
+  try {
+    await page.waitForFunction(() => {
+      const tabLists = Array.from(document.querySelectorAll('[role="tablist"]'));
+      return tabLists.some((list) => Array.from(list.querySelectorAll('[role="tab"]'))
+        .filter((tab) => tab.closest('[role="tablist"]') === list).length >= 6);
+    }, undefined, { timeout: 15000 });
+  } catch {
+    await browser.close();
+    throw new Error('TOP200 页面榜单区域尚未加载完成，请稍后重新读取');
+  }
   return { browser, context, page };
 }
 
@@ -125,31 +136,70 @@ async function discoverCategories(page, log = () => {}) {
   return unique.sort((a, b) => a.displayPath.localeCompare(b.displayPath, 'zh-CN'));
 }
 
+async function readRankingNames(page) {
+  return page.evaluate((limit) => {
+    const text = (element) => String(element?.innerText || element?.textContent || '').replace(/\s+/g, ' ').trim();
+    const tabLists = Array.from(document.querySelectorAll('[role="tablist"]'));
+    const groups = tabLists.map((list) => Array.from(list.querySelectorAll('[role="tab"]'))
+      .filter((tab) => tab.closest('[role="tablist"]') === list));
+    const rankingTabs = groups.sort((a, b) => b.length - a.length)[0] || [];
+    return rankingTabs.slice(0, limit).map(text).filter(Boolean);
+  }, MAX_RANKING_TYPES);
+}
+
 async function readPeriods(page) {
-  return page.evaluate(() => Array.from(document.querySelectorAll('input[type="radio"]')).map((input) => ({
-    value: input.value,
-    label: String(input.closest('label')?.innerText || '').replace(/\s+/g, ' ').trim(),
-    checked: input.checked,
-    disabled: input.disabled || input.closest('label')?.className.includes('disabled'),
-  })).filter((period) => period.label));
+  return page.evaluate(() => {
+    const text = (element) => String(element?.innerText || element?.textContent || '').replace(/\s+/g, ' ').trim();
+    const radios = Array.from(document.querySelectorAll('input[type="radio"]')).map((input) => ({
+      value: input.value,
+      label: text(input.closest('label')),
+      checked: input.checked,
+      disabled: input.disabled || input.closest('label')?.className.includes('disabled'),
+      control: 'radio',
+    })).filter((period) => period.label);
+    if (radios.length) return radios;
+
+    const values = new Map([
+      ['实时', 'realTime'],
+      ['近1天', 'one'],
+      ['近7天', 'seven'],
+      ['近30天', 'thirty'],
+    ]);
+    const tabLists = Array.from(document.querySelectorAll('[role="tablist"]'));
+    const groups = tabLists.map((list) => Array.from(list.querySelectorAll('[role="tab"]'))
+      .filter((tab) => tab.closest('[role="tablist"]') === list));
+    const periodTabs = groups.find((tabs) => tabs.some((tab) => values.has(text(tab))));
+    return (periodTabs || []).flatMap((tab) => {
+      const label = text(tab);
+      if (!values.has(label)) return [];
+      return [{
+        value: values.get(label),
+        label,
+        checked: tab.getAttribute('aria-selected') === 'true',
+        disabled: tab.getAttribute('aria-disabled') === 'true' || String(tab.className).includes('disabled'),
+        control: 'tab',
+      }];
+    });
+  });
 }
 
 async function discoverRankingTypes(page, log = () => {}) {
-  const tabs = page.locator('[role="tab"]');
-  const count = Math.min(await tabs.count(), MAX_RANKING_TYPES);
-  if (!count) throw new Error('未找到 TOP200 榜单页签');
-  const activeIndex = await page.evaluate(() => Array.from(document.querySelectorAll('[role="tab"]')).findIndex((tab) => tab.getAttribute('aria-selected') === 'true'));
+  const names = await readRankingNames(page);
+  if (!names.length) throw new Error('未找到 TOP200 榜单页签');
+  const activeName = await page.evaluate((rankingNames) => {
+    const text = (element) => String(element?.innerText || element?.textContent || '').replace(/\s+/g, ' ').trim();
+    return Array.from(document.querySelectorAll('[role="tab"]'))
+      .find((tab) => tab.getAttribute('aria-selected') === 'true' && rankingNames.includes(text(tab)))?.textContent?.trim() || '';
+  }, names);
   const rankingTypes = [];
-  for (let index = 0; index < count; index += 1) {
-    const currentTabs = page.locator('[role="tab"]');
-    const name = cleanText(await currentTabs.nth(index).innerText());
-    await currentTabs.nth(index).click();
+  for (const name of names) {
+    const tab = page.getByRole('tab', { name, exact: true });
+    await tab.click();
     await page.waitForTimeout(2200);
     const periods = await readPeriods(page);
     rankingTypes.push({ name, periods, preferredPeriod: choosePeriod(periods)?.actualPeriod || null });
   }
-  const restoreIndex = activeIndex >= 0 && activeIndex < count ? activeIndex : 0;
-  await page.locator('[role="tab"]').nth(restoreIndex).click();
+  await page.getByRole('tab', { name: activeName || names[0], exact: true }).click();
   await page.waitForTimeout(2200);
   log(`已读取 ${rankingTypes.length} 个榜单（已按确认排除后三个特殊榜）`);
   return rankingTypes;
@@ -292,6 +342,7 @@ async function selectBrand(page, brandType) {
 
 async function selectRanking(page, rankingType) {
   const tab = page.getByRole('tab', { name: rankingType, exact: true });
+  await tab.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
   if (!(await tab.count())) throw new Error(`页面没有榜单“${rankingType}”`);
   if ((await tab.getAttribute('aria-selected')) !== 'true') {
     await tab.click();
@@ -304,6 +355,17 @@ async function selectPreferredPeriod(page) {
   const periods = await readPeriods(page);
   const choice = choosePeriod(periods);
   if (!choice) throw new Error('当前榜单既不支持实时，也不支持近1天');
+  if (choice.control === 'tab') {
+    const tab = page.getByRole('tab', { name: choice.actualPeriod, exact: true });
+    if (!(await tab.count())) throw new Error(`未找到周期“${choice.actualPeriod}”`);
+    if ((await tab.getAttribute('aria-selected')) !== 'true') {
+      await tab.click();
+      await page.waitForTimeout(3000);
+    }
+    if ((await tab.getAttribute('aria-selected')) !== 'true') throw new Error(`周期“${choice.actualPeriod}”切换失败`);
+    return choice;
+  }
+
   const input = page.locator(`input[type="radio"][value="${choice.value}"]`).first();
   if (!(await input.count())) throw new Error(`未找到周期“${choice.actualPeriod}”`);
   if (!(await input.isChecked())) {
@@ -634,6 +696,9 @@ module.exports = {
   StopRequestedError,
   connectTargetPage,
   discoverOptions,
+  readRankingNames,
+  readPeriods,
+  selectPreferredPeriod,
   getTableState,
   waitForStableTable,
   runTask,

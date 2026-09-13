@@ -1,7 +1,38 @@
-node_modules/
-.edge-path.txt
-data/tasks/*.json
-data/checkpoints/*.json
-reports/*.json
-reports/*.xlsx
-logs/*.log
+# Local assistant and tool state
+.claude/
+.gstack/
+
+# Dependencies and local environments
+**/node_modules/
+**/.venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.coverage
+
+# Runtime state and generated output
+**/logs/
+**/storage/
+**/data/
+**/checkpoints/
+**/reports/
+**/outputs/
+**/备份/
+**/build/
+**/artifacts/
+**/dist/
+
+# Local configuration and machine-specific files
+**/config.*.local.json
+**/.env
+**/.env.*
+!.env.example
+**/.edge-path.txt
+
+# Project outside the confirmed monorepo scope
+Net weight of the product/
+
+# Local business spreadsheets
+**/*.xlsx
+**/*.xls
+

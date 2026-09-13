@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "抖店到手价成本夹板",
+  "version": "0.1.0",
+  "description": "只读解析抖店最低到手价，并展示聚水潭成本、估算运费、基础服务费和真实成本。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjSGRqlCEXP+OhsxTo0D93emoKxsf46Eoc8fZXjt1mfTe9UnCZ2cieH18RrqEak9suflVEoNx6Aia6Z1Pfx5qxGvsfD3xaZp5v1GFTDvsVsHNZRtK7s9s5TRnZjc1pK5IGzKhhFEFN/JrEqh7uASzGUVXVwuZT+5AV0DrR6rwSNcYvlFtVLD4JzC81a97lFLWFWpznUGguq73wAJzDu1nV1t7YNVPRTWXydqmBAnPmBo1+euZgaGb0xmmY7ou7ojttH9fTyZ8rhX5bT3pB6NXQd71JTlFj4tkV4Y4LDlLpAru/fF1+yKzYEAwVqSBkAQFhRRNB4lto4lD7576C54FpQIDAQAB",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://fxg.jinritemai.com/ffa/merchant/*-campaign-detail*",
+        "https://fxg.jinritemai.com/ffa/g/create*"
+      ],
+      "js": [
+        "core.js",
+        "panel.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

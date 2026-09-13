@@ -1,0 +1,11 @@
+{
+  "environment": "test",
+  "api_base_url": "https://dev-api.jushuitan.com",
+  "app_key": "请填入本机测试 app_key",
+  "app_secret": "请填入本机测试 app_secret",
+  "access_token": "请填入本机测试 access_token",
+  "sync_start_date": "2010-01-01",
+  "window_days": 7,
+  "output_root": "storage"
+}
+

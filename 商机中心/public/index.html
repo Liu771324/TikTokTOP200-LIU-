@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抖店商机中心 · 批量采集</title>
+<style>
+  :root {
+    --brand:#ff6b35; --brand-dark:#e95320; --brand-soft:#fff3ed;
+    --ink:#182033; --sub:#566078; --muted:#8b93a7; --line:#e6e9f0;
+    --bg:#f4f6fa; --card:#fff; --good:#168a4a; --warn:#b46a00; --bad:#c43d38;
+    --shadow:0 10px 30px rgba(27,38,70,.08); --radius:14px;
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Microsoft YaHei","Segoe UI",sans-serif;min-height:100vh}
+  button,input{font:inherit}.topbar{background:linear-gradient(120deg,#151d33,#243352);color:#fff;border-bottom:3px solid var(--brand)}
+  .topbar-inner{max-width:1180px;margin:auto;padding:24px 24px 22px;display:flex;justify-content:space-between;gap:24px;align-items:center}
+  h1{font-size:23px;margin:0 0 6px}.subtitle{font-size:13px;color:#c1c8d7}.badge{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);padding:8px 12px;border-radius:999px;font-size:12px;white-space:nowrap}
+  .layout{max-width:1180px;margin:24px auto;padding:0 24px;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(340px,.75fr);gap:20px;align-items:start}
+  .stack{display:grid;gap:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
+  .card-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.card-title h2{font-size:17px;margin:0}.hint{font-size:12px;color:var(--muted)}
+  .btn{height:40px;border:0;border-radius:9px;padding:0 18px;background:var(--brand);color:#fff;font-weight:700;cursor:pointer;transition:.18s ease;box-shadow:0 4px 12px rgba(255,107,53,.22)}
+  .btn:hover:not(:disabled){background:var(--brand-dark);transform:translateY(-1px)}.btn:disabled{background:#c9ced9;color:#858da0;cursor:not-allowed;box-shadow:none}.btn.secondary{background:#f3f5f9;color:#38425a;box-shadow:none;border:1px solid var(--line)}
+  .btn.secondary:hover:not(:disabled){background:#e9edf4}.btn.danger{background:#fff;color:var(--bad);border:1px solid #efc7c5;box-shadow:none}.btn.small{height:32px;padding:0 12px;font-size:12px}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.search{height:40px;min-width:260px;flex:1;border:1px solid var(--line);border-radius:9px;padding:0 12px;outline:none;background:#fbfcfe}.search:focus,.field input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(255,107,53,.12)}
+  .selection-meta{margin:12px 0 8px;display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--sub)}
+  .category-list{height:350px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fbfcfe;padding:6px}
+  .category-row{display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border-radius:8px;font-size:13px;line-height:1.45;cursor:pointer}.category-row:hover{background:var(--brand-soft)}.category-row input{margin-top:2px;accent-color:var(--brand)}
+  .category-empty{padding:42px 18px;text-align:center;color:var(--muted);font-size:13px}.limit-note{padding:8px 10px;color:var(--muted);font-size:12px;text-align:center}
+  .range-grid{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-top:16px}.field{display:grid;gap:6px}.field label{font-size:12px;font-weight:700;color:var(--sub)}.field input{height:40px;border:1px solid var(--line);border-radius:9px;padding:0 12px;outline:none;width:100%}
+  .status-box{border:1px solid var(--line);border-radius:11px;padding:14px;background:#fbfcfe}.status-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.status-name{font-weight:700;font-size:14px}.status-label{font-size:12px;color:var(--sub);margin-top:5px}.state-pill{font-size:12px;padding:5px 9px;border-radius:999px;background:#eef2f8;color:#4f5a70}.state-pill.running{background:#e9f7ef;color:var(--good)}.state-pill.paused{background:#fff4df;color:var(--warn)}.state-pill.stopping{background:#fdecea;color:var(--bad)}
+  .progress{height:8px;background:#e9edf4;border-radius:999px;overflow:hidden;margin:14px 0 8px}.progress>div{height:100%;background:linear-gradient(90deg,var(--brand),#ff9b72);width:0;transition:width .25s}.progress-meta{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}.controls{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .log{height:330px;overflow:auto;background:#0d1117;color:#c9d1d9;border-radius:10px;padding:14px;font:12.5px/1.7 Consolas,"Cascadia Code",monospace;white-space:pre-wrap;word-break:break-all}.log .ok{color:#7ee787}.log .err{color:#ff7b72}.log .warn{color:#f2cc60}
+  .task-list{display:grid;gap:10px;max-height:430px;overflow:auto}.task{border:1px solid var(--line);border-radius:10px;padding:12px}.task-top{display:flex;justify-content:space-between;gap:10px}.task-name{font-size:13px;font-weight:700;line-height:1.45}.task-meta{font-size:12px;color:var(--muted);margin-top:5px}.task-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .modal-mask{display:none;position:fixed;inset:0;background:rgba(10,16,30,.56);z-index:100;align-items:center;justify-content:center;padding:20px}.modal-mask.show{display:flex}.modal{width:min(500px,100%);background:#fff;border-radius:16px;padding:26px;box-shadow:0 24px 80px rgba(0,0,0,.2)}.modal h3{margin:0 0 12px;font-size:18px}.modal p{font-size:13px;color:var(--sub);line-height:1.8}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+  @media(max-width:900px){.layout{grid-template-columns:1fr}.range-grid{grid-template-columns:1fr 1fr}.range-grid .start-field{grid-column:1/-1}.topbar-inner{align-items:flex-start;flex-direction:column}.badge{display:none}}
+  @media(max-width:560px){.layout{padding:0 12px;margin-top:12px}.card{padding:16px}.range-grid{grid-template-columns:1fr}.category-list{height:300px}.toolbar .btn{flex:1}.search{min-width:100%}}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner"><div><h1>抖店商机中心 · 批量采集</h1><div class="subtitle">读取真实类目，一次勾选多个类目，自动串行采集并合并报告</div></div><div class="badge">真实 Edge CDP · 单会话串行执行</div></div></header>
+
+<main class="layout">
+  <section class="stack">
+    <div class="card">
+      <div class="card-title"><h2>1. 选择类目与金额区间</h2><span class="hint" id="discoverTime">尚未读取类目</span></div>
+      <div class="toolbar">
+        <button class="btn" id="discoverBtn">读取 / 刷新类目</button>
+        <input class="search" id="categorySearch" placeholder="搜索类目路径，例如：药食同源、枸杞" disabled>
+        <button class="btn secondary small" id="selectVisibleBtn" disabled>勾选当前结果</button>
+        <button class="btn secondary small" id="clearSelectionBtn" disabled>清空已选</button>
+      </div>
+      <div class="selection-meta"><span id="categorySummary">请先读取商机中心真实类目</span><strong id="selectedCount">已选 0 个</strong></div>
+      <div class="category-list" id="categoryList"><div class="category-empty">点击“读取 / 刷新类目”，程序会从已打开的调试版 Edge 获取真实类目。</div></div>
+      <div class="range-grid">
+        <div class="field"><label for="minSales">最低金额（元）</label><input id="minSales" type="number" min="0" value="10000"></div>
+        <div class="field"><label for="maxSales">最高金额（元，可留空）</label><input id="maxSales" type="number" min="0" placeholder="不限制"></div>
+        <div class="field start-field"><button class="btn" id="startBtn" disabled>创建批量任务并开始</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><h2>2. 当前任务</h2><span class="hint">完成一个类目后立即保存检查点</span></div>
+      <div class="status-box" id="statusBox">
+        <div class="status-head"><div><div class="status-name" id="statusName">暂无运行任务</div><div class="status-label" id="statusLabel">读取类目并创建任务后会显示进度</div></div><span class="state-pill" id="statePill">空闲</span></div>
+        <div class="progress"><div id="progressBar"></div></div>
+        <div class="progress-meta"><span id="progressText">类目 0/0</span><span id="statsText">达标 0 · 结果 0 · 失败 0</span></div>
+        <div class="controls">
+          <button class="btn secondary small" id="pauseBtn" disabled>暂停</button>
+          <button class="btn danger small" id="stopBtn" disabled>停止并生成部分报告</button>
+          <button class="btn secondary small" id="openMdBtn" disabled>打开 Markdown</button>
+          <button class="btn secondary small" id="openXlsxBtn" disabled>打开 Excel</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card"><div class="card-title"><h2>实时日志</h2><button class="btn secondary small" id="clearLogBtn">清空显示</button></div><div class="log" id="log"></div></div>
+  </section>
+
+  <aside class="stack">
+    <div class="card"><div class="card-title"><h2>任务记录</h2><button class="btn secondary small" id="refreshTasksBtn">刷新</button></div><div class="task-list" id="taskList"><div class="category-empty">暂无任务</div></div></div>
+    <div class="card"><div class="card-title"><h2>运行说明</h2></div><div class="hint" style="font-size:13px;line-height:1.9">多个类目按勾选顺序串行执行，不会并发操作 Edge。<br>停止或服务重启后，点击“继续”会跳过已完成类目。<br>失败类目可单独重试，完整报告不会被部分报告覆盖。</div></div>
+  </aside>
+</main>
+
+<div class="modal-mask" id="loginMask"><div class="modal"><h3>请在调试版 Edge 中完成登录</h3><p>请切换到已经打开的 Edge，在商机中心完成抖店登录。完成后回到这里点击“我已登录，继续”。程序不会读取、复制或导入 Cookie。</p><div class="modal-actions"><button class="btn secondary" data-close="loginMask">取消</button><button class="btn" id="confirmLoginBtn">我已登录，继续</button></div></div></div>
+<div class="modal-mask" id="pathMask"><div class="modal"><h3>未找到 Microsoft Edge</h3><p>请填写 msedge.exe 的完整路径。可在 Edge 地址栏打开 edge://version 查看“可执行文件路径”。</p><input class="search" id="edgePathInput" style="width:100%" placeholder="C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"><div class="modal-actions"><button class="btn secondary" data-close="pathMask">取消</button><button class="btn" id="saveEdgePathBtn">保存</button></div></div></div>
+
+<script>
+const el = (id) => document.getElementById(id);
+const state = { categories: [], categoryMap: new Map(), selected: new Set(), activeTask: null, activeState: 'idle', tasks: [], pendingAction: null };
+const MAX_RENDERED = 400;
+
+function showModal(id){el(id).classList.add('show')} function hideModal(id){el(id).classList.remove('show')}
+document.querySelectorAll('[data-close]').forEach((button)=>button.addEventListener('click',()=>hideModal(button.dataset.close)));
+
+function logLine(text, cls='') {
+  const line=document.createElement('div'); if(cls)line.className=cls; line.textContent=String(text).replace(/\n+$/,''); el('log').appendChild(line); el('log').scrollTop=el('log').scrollHeight;
+}
+
+async function api(url, options={}) {
+  const response=await fetch(url,options); const data=await response.json().catch(()=>({ok:false,message:'服务返回格式异常'}));
+  if(!response.ok && !data.needLogin) throw new Error(data.message||`请求失败 ${response.status}`); return data;
+}
+
+function selectedCategories(){return [...state.selected].map((path)=>state.categoryMap.get(path)).filter(Boolean)}
+function updateStartButton(){el('startBtn').disabled=!state.selected.size||['running','paused','stopping'].includes(state.activeState)}
+
+function filteredCategories(){
+  const keyword=el('categorySearch').value.trim().toLowerCase();
+  return keyword?state.categories.filter((item)=>item.displayPath.toLowerCase().includes(keyword)):state.categories;
+}
+
+function renderCategories(){
+  const list=el('categoryList'); const filtered=filteredCategories(); list.innerHTML='';
+  if(!state.categories.length){list.innerHTML='<div class="category-empty">点击“读取 / 刷新类目”获取真实类目。</div>';return}
+  const fragment=document.createDocumentFragment();
+  for(const category of filtered.slice(0,MAX_RENDERED)){
+    const label=document.createElement('label');label.className='category-row';
+    const input=document.createElement('input');input.type='checkbox';input.checked=state.selected.has(category.displayPath);input.addEventListener('change',()=>{if(input.checked)state.selected.add(category.displayPath);else state.selected.delete(category.displayPath);updateSelectionMeta()});
+    const text=document.createElement('span');text.textContent=category.displayPath;label.append(input,text);fragment.appendChild(label);
+  }
+  list.appendChild(fragment);
+  if(filtered.length>MAX_RENDERED){const note=document.createElement('div');note.className='limit-note';note.textContent=`共匹配 ${filtered.length} 个，当前显示前 ${MAX_RENDERED} 个，请输入关键词缩小范围`;list.appendChild(note)}
+  if(!filtered.length)list.innerHTML='<div class="category-empty">没有匹配的类目</div>';
+  el('categorySummary').textContent=`已读取 ${state.categories.length} 个类目 · 当前匹配 ${filtered.length} 个`;
+}
+
+function updateSelectionMeta(){el('selectedCount').textContent=`已选 ${state.selected.size} 个`;updateStartButton();renderCategories()}
+
+async function discover(confirmed=false){
+  el('discoverBtn').disabled=true;el('discoverBtn').textContent='读取中…';state.pendingAction={type:'discover'};
+  try{
+    const data=await api('/api/discover',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirmed})});
+    if(data.needPath){showModal('pathMask');return} if(data.needLogin){showModal('loginMask');return} if(!data.ok)throw new Error(data.message||'类目读取失败');
+    state.categories=data.categories||[];state.categoryMap=new Map(state.categories.map((item)=>[item.displayPath,item]));state.selected=new Set([...state.selected].filter((path)=>state.categoryMap.has(path)));
+    el('categorySearch').disabled=false;el('selectVisibleBtn').disabled=false;el('clearSelectionBtn').disabled=false;el('discoverTime').textContent=`最近读取：${new Date(data.discoveredAt).toLocaleTimeString()}`;logLine(`✓ 已读取 ${state.categories.length} 个真实类目`,'ok');renderCategories();updateSelectionMeta();state.pendingAction=null;
+  }catch(error){logLine(`读取类目失败：${error.message}`,'err')}finally{el('discoverBtn').disabled=false;el('discoverBtn').textContent='读取 / 刷新类目'}
+}
+
+function validateBounds(){
+  const minRaw=el('minSales').value.trim(),maxRaw=el('maxSales').value.trim();const minSales=Number(minRaw),maxSales=maxRaw===''?null:Number(maxRaw);
+  if(minRaw===''||!Number.isFinite(minSales)||minSales<0)throw new Error('最低金额必须是大于或等于 0 的数字');
+  if(maxSales!==null&&(!Number.isFinite(maxSales)||maxSales<minSales))throw new Error('最高金额必须大于或等于最低金额，也可以留空');return{minSales,maxSales};
+}
+
+async function createTask(confirmed=false,payload=null){
+  try{payload=payload||{categories:selectedCategories(),...validateBounds()};if(!payload.categories.length)throw new Error('至少选择一个类目');state.pendingAction={type:'start',payload};el('startBtn').disabled=true;el('startBtn').textContent='创建中…';
+    const data=await api('/api/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,confirmed})});
+    if(data.needPath){showModal('pathMask');return}if(data.needLogin){showModal('loginMask');return}if(!data.ok)throw new Error(data.message||'任务创建失败');
+    state.pendingAction=null;state.activeTask=data.task;state.activeState='running';logLine(`✓ 已创建批量任务：${data.task.taskName}`,'ok');renderStatus();await loadTasks();
+  }catch(error){logLine(`创建任务失败：${error.message}`,'err')}finally{el('startBtn').textContent='创建批量任务并开始';updateStartButton()}
+}
+
+function stateLabel(value){return({idle:'空闲',running:'运行中',paused:'已暂停',stopping:'停止中',stopped:'已停止',done:'已完成',completed:'已完成',failed:'失败',pending:'待运行'})[value]||value}
+function renderStatus(){
+  const task=state.activeTask;const running=['running','paused','stopping'].includes(state.activeState);el('statePill').textContent=stateLabel(state.activeState);el('statePill').className=`state-pill ${state.activeState}`;
+  if(!task){el('statusName').textContent='暂无运行任务';el('statusLabel').textContent='读取类目并创建任务后会显示进度';el('progressBar').style.width='0%';el('progressText').textContent='类目 0/0';el('statsText').textContent='达标 0 · 结果 0 · 失败 0'}else{
+    const stats=task.stats||{};const total=stats.totalCategories||task.combinations?.length||0;const completed=stats.completedCategories||0;const current=task.current;const shown=Math.min(total,completed+(current?1:0));
+    el('statusName').textContent=task.taskName;el('statusLabel').textContent=current?`当前：${current.categoryPath}`:(task.lastError||`任务状态：${stateLabel(task.status)}`);el('progressBar').style.width=`${total?Math.round(completed/total*100):0}%`;el('progressText').textContent=`类目 ${shown}/${total} · 已完成 ${completed}`;el('statsText').textContent=`达标 ${stats.qualifyingCount||0} · 结果 ${stats.saved||0} · 失败 ${stats.failed||0}`;
+  }
+  el('pauseBtn').disabled=!running||state.activeState==='stopping';el('pauseBtn').textContent=state.activeState==='paused'?'继续':'暂停';el('stopBtn').disabled=!running||state.activeState==='stopping';const hasReport=Boolean(task?.reportFiles);el('openMdBtn').disabled=!hasReport;el('openXlsxBtn').disabled=!hasReport;updateStartButton();
+}
+
+async function controlTask(action){if(!state.activeTask)return;try{await api(`/api/tasks/${encodeURIComponent(state.activeTask.taskId)}/${action}`,{method:'POST'});if(action==='pause')state.activeState='paused';if(action==='resume')state.activeState='running';if(action==='stop')state.activeState='stopping';renderStatus()}catch(error){logLine(`任务操作失败：${error.message}`,'err')}}
+async function openReport(type,taskId=state.activeTask?.taskId){if(!taskId)return;try{await api(`/api/open?taskId=${encodeURIComponent(taskId)}&type=${type}`)}catch(error){logLine(error.message,'err')}}
+
+async function loadTasks(){
+  try{const data=await api('/api/tasks');state.tasks=data.tasks||[];const box=el('taskList');box.innerHTML='';if(!state.tasks.length){box.innerHTML='<div class="category-empty">暂无任务</div>';return}
+    for(const task of state.tasks){const row=document.createElement('div');row.className='task';const failed=task.combinations?.filter((item)=>item.status==='failed').length||0;const resumable=['stopped','pending','failed'].includes(task.status)||task.combinations?.some((item)=>['stopped','pending'].includes(item.status));row.innerHTML=`<div class="task-top"><div><div class="task-name"></div><div class="task-meta"></div></div><span class="state-pill">${stateLabel(task.status)}</span></div><div class="task-actions"></div>`;row.querySelector('.task-name').textContent=task.taskName;row.querySelector('.task-meta').textContent=`${task.stats?.completedCategories||0}/${task.stats?.totalCategories||0} 类目 · ${task.stats?.saved||0} 条结果`;const actions=row.querySelector('.task-actions');
+      const add=(label,handler,kind='secondary')=>{const button=document.createElement('button');button.className=`btn ${kind} small`;button.textContent=label;button.onclick=handler;actions.appendChild(button)};
+      if(resumable)add('继续',()=>resumeHistory(task));if(failed)add(`重试失败(${failed})`,()=>retryHistory(task));if(task.reportFiles){add('Markdown',()=>openReport('md',task.taskId));add('Excel',()=>openReport('xlsx',task.taskId));add('下载 JSON',()=>location.href=`/api/tasks/${encodeURIComponent(task.taskId)}/download?type=json`)}box.appendChild(row)}
+  }catch(error){logLine(`读取任务记录失败：${error.message}`,'err')}
+}
+async function resumeHistory(task){try{await api(`/api/tasks/${encodeURIComponent(task.taskId)}/resume`,{method:'POST'});state.activeTask=task;state.activeState='running';renderStatus()}catch(error){logLine(error.message,'err')}}
+async function retryHistory(task){try{await api(`/api/tasks/${encodeURIComponent(task.taskId)}/retry`,{method:'POST'});state.activeTask=task;state.activeState='running';renderStatus()}catch(error){logLine(error.message,'err')}}
+
+async function pollStatus(){try{const data=await api('/api/status');state.activeState=data.state||'idle';if(data.task)state.activeTask=data.task;else if(!['running','paused','stopping'].includes(state.activeState)&&state.activeTask?.taskId){const detail=await api(`/api/tasks/${encodeURIComponent(state.activeTask.taskId)}`);state.activeTask=detail.task}renderStatus()}catch{} }
+function connectLogs(){const events=new EventSource('/api/logs');events.addEventListener('log',(event)=>{const{line}=JSON.parse(event.data);const cls=/失败|错误|✗/.test(line)?'err':/完成|✓/.test(line)?'ok':/警告|⚠/.test(line)?'warn':'';logLine(line,cls)});events.addEventListener('status',async(event)=>{const data=JSON.parse(event.data);state.activeState=data.state||'idle';if(data.task)state.activeTask=data.task;renderStatus();if(['done','stopped','failed'].includes(data.state))await loadTasks()})}
+
+el('discoverBtn').onclick=()=>discover(false);el('categorySearch').oninput=renderCategories;el('selectVisibleBtn').onclick=()=>{for(const category of filteredCategories())state.selected.add(category.displayPath);updateSelectionMeta()};el('clearSelectionBtn').onclick=()=>{state.selected.clear();updateSelectionMeta()};el('startBtn').onclick=()=>createTask(false);el('pauseBtn').onclick=()=>controlTask(state.activeState==='paused'?'resume':'pause');el('stopBtn').onclick=()=>{if(confirm('停止后会完成当前商品并生成部分报告。确定停止吗？'))controlTask('stop')};el('openMdBtn').onclick=()=>openReport('md');el('openXlsxBtn').onclick=()=>openReport('xlsx');el('clearLogBtn').onclick=()=>{el('log').innerHTML=''};el('refreshTasksBtn').onclick=loadTasks;
+el('confirmLoginBtn').onclick=async()=>{hideModal('loginMask');const action=state.pendingAction;if(action?.type==='start')await createTask(true,action.payload);else await discover(true)};
+el('saveEdgePathBtn').onclick=async()=>{try{const edgePath=el('edgePathInput').value.trim();await api('/api/save-edge-path',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({edgePath})});hideModal('pathMask');showModal('loginMask')}catch(error){logLine(error.message,'err')}};
+
+connectLogs();loadTasks();pollStatus();setInterval(pollStatus,1500);
+</script>
+</body>
+</html>

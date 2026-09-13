@@ -1,0 +1,21 @@
+{
+  "name": "doudian-business-center-collector",
+  "private": true,
+  "version": "1.0.0",
+  "description": "抖店商机中心多类目成交增长采集与报告工具",
+  "scripts": {
+    "collect": "node collect_v4.js",
+    "excel": "node export_excel.js",
+    "test": "node --test \"test/*.test.js\"",
+    "test:ui": "node test/ui_smoke.js",
+    "check": "node --check collect_v4.js && node --check business_table.js && node --check batch-runner.js && node --check category_discovery.js && node --check task-store.js && node --check collection_control.js && node --check collector_retry.js && node --check collect_utils.js && node --check report_output.js && node --check export_excel.js && node --check server.js && node --check edge.js && npm test"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "playwright-core": "1.58.2",
+    "xlsx": "^0.18.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
