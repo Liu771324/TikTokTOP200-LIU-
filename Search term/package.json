@@ -1,0 +1,8 @@
+{
+  "name": "opportunity-search-console",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node app/server.mjs"
+  }
+}
