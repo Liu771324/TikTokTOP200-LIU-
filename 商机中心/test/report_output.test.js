@@ -33,6 +33,57 @@ test('部分报告明确区分已处理完整性与区间覆盖', () => {
   assert.match(markdown, /近30天成交金额展示档位完整落入 ¥10,000—¥250,000/);
 });
 
+test('Markdown 对全任务结果统一分组并重复显示分组名', () => {
+  const markdown = buildMarkdown(payload({
+    results: [
+      { keyword: '黄芪膏', categoryPath: '类目 A', totalSales: '¥10万', yesterday: '¥1万', today: '¥2万', growth: '100%' },
+      { keyword: '西梅干', categoryPath: '类目 B', totalSales: '¥10万', yesterday: '¥1万', today: '¥2万', growth: '100%' },
+      { keyword: '黄芪片', categoryPath: '类目 C', totalSales: '¥10万', yesterday: '¥1万', today: '¥2万', growth: '100%' },
+    ],
+  }));
+
+  assert.match(markdown, /\| # \| 产品分组 \| 类目 \| 产品名称 \|/);
+  assert.match(markdown, /\| 1 \| 黄芪 \| 类目 A \| 黄芪膏 \|[\s\S]*\| 2 \| 黄芪 \| 类目 C \| 黄芪片 \|/);
+});
+
+test('报告记录近30天预筛选模式和守恒统计', () => {
+  const markdown = buildMarkdown(payload({
+    only30dGrowth: true,
+    qualifyingCount: 3,
+    stats: {
+      normal: 1,
+      fast: 0,
+      down: 0,
+      flat: 0,
+      unparseable: 0,
+      unavailable: 0,
+      retrySuccess: 0,
+      prefilterPassed: 1,
+      prefilterSkipped: 2,
+      detailsOpened: 1,
+    },
+  }));
+
+  assert.match(markdown, /> 近30天预筛选: 已启用（仅红色向上箭头）/);
+  assert.match(markdown, /预筛选通过: 1 条 \| 预筛选跳过: 2 条 \| 实际打开详情: 1 条/);
+  assert.match(markdown, /完整性: 3\/3/);
+});
+
+test('Excel 汇总保存近30天预筛选模式和数量', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'business-center-prefilter-summary-'));
+  const paths = await saveReports(payload({
+    only30dGrowth: true,
+    qualifyingCount: 3,
+    stats: { normal: 1, prefilterPassed: 1, prefilterSkipped: 2, detailsOpened: 1 },
+  }), dir);
+  const workbook = XLSX.readFile(paths.xlsxPath);
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets['采集汇总'], { header: 1 });
+
+  assert.deepEqual(rows[0].slice(-4), ['预筛选模式', '预筛选通过', '预筛选跳过', '打开详情']);
+  assert.deepEqual(rows[1].slice(-4), ['仅红色向上箭头', 1, 2, 1]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('部分报告的状态会进入 Excel 头部', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'business-center-report-'));
   const mdPath = path.join(dir, 'partial.md');
@@ -53,7 +104,7 @@ test('部分报告的状态会进入 Excel 头部', async () => {
   assert.equal(styledSheet.getCell('B1').isMerged, true);
   assert.equal(styledSheet.views[0].state, 'frozen');
   assert.equal(styledSheet.views[0].ySplit, 8);
-  assert.match(styledSheet.autoFilter, /^A8:G/);
+  assert.match(styledSheet.autoFilter, /^A8:H/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -91,14 +142,14 @@ test('多类目合并报告包含类目列、进度和三个 Excel 工作表', a
   });
   const markdown = buildMarkdown(batch);
   assert.match(markdown, /> 类目进度: 1\/2/);
-  assert.match(markdown, /\| # \| 类目 \| 产品名称 \|/);
+  assert.match(markdown, /\| # \| 产品分组 \| 类目 \| 产品名称 \|/);
   assert.match(markdown, /传统滋补 \/ 药食同源食品/);
   const paths = await saveReports(batch, dir);
   const workbook = XLSX.readFile(paths.xlsxPath);
   assert.deepEqual(workbook.SheetNames, ['采集汇总', '成交增长', '失败记录']);
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets['成交增长'], { header: 1 });
-  assert.deepEqual(rows[0].slice(0, 3), ['#', '类目', '产品名称']);
-  assert.equal(rows[1][1], '传统滋补 / 药食同源食品');
+  assert.deepEqual(rows[0].slice(0, 4), ['#', '产品分组', '类目', '产品名称']);
+  assert.equal(rows[1][2], '传统滋补 / 药食同源食品');
   const styledWorkbook = new ExcelJS.Workbook();
   await styledWorkbook.xlsx.readFile(paths.xlsxPath);
   const summarySheet = styledWorkbook.getWorksheet('采集汇总');
@@ -108,6 +159,27 @@ test('多类目合并报告包含类目列、进度和三个 Excel 工作表', a
   assert.equal(summarySheet.views[0].ySplit, 4);
   assert.equal(resultSheet.getCell('A1').fill.fgColor.argb, 'FFDCE6F1');
   assert.equal(resultSheet.views[0].ySplit, 1);
-  assert.match(resultSheet.autoFilter, /^A1:G/);
+  assert.match(resultSheet.autoFilter, /^A1:H/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Excel 仅合并连续的已识别产品分组', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'business-center-group-merge-'));
+  const paths = await saveReports(payload({
+    results: [
+      { keyword: '黄芪膏', totalSales: '¥10万', yesterday: '¥1万', today: '¥2万', growth: '100%' },
+      { keyword: '沙棘原浆', totalSales: '¥10万', yesterday: '¥1万', today: '¥2万', growth: '100%' },
+      { keyword: '黄芪片', totalSales: '¥10万', yesterday: '¥1万', today: '¥2万', growth: '100%' },
+      { keyword: '黑芝麻丸', totalSales: '¥10万', yesterday: '¥1万', today: '¥2万', growth: '100%' },
+    ],
+  }), dir);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(paths.xlsxPath);
+  const sheet = workbook.getWorksheet('成交增长');
+
+  assert.equal(sheet.getCell('B2').isMerged, true);
+  assert.equal(sheet.getCell('B3').isMerged, true);
+  assert.equal(sheet.getCell('B4').isMerged, false);
+  assert.equal(sheet.getCell('B5').isMerged, false);
   fs.rmSync(dir, { recursive: true, force: true });
 });

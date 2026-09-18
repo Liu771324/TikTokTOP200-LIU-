@@ -14,11 +14,28 @@ function areSalesValuesDescending(values) {
   return ranges.every((range, index) => index === 0 || range.min <= ranges[index - 1].min);
 }
 
+function classifyGrowthTrend(descriptor = {}) {
+  const fills = new Set((descriptor.arrowFills || []).map((value) => String(value).toLowerCase()));
+  const hasRedUp = fills.has('#ff3b52') || fills.has('rgb(255, 59, 82)');
+  const hasGreenDown = fills.has('#00c87f') || fills.has('rgb(0, 200, 127)');
+  if (hasRedUp !== hasGreenDown) return hasRedUp ? 'up' : 'down';
+  const signal = `${descriptor.classNames || ''} ${descriptor.labels || ''}`.toLowerCase();
+  const isUp = /trendarrowup|trendvaluepositive|(?:^|[\s_-])(arrow)?up(?:$|[\s_-])|increase|positive|向上|上涨/.test(signal);
+  const isDown = /trendarrowdown|trendvaluenegative|(?:^|[\s_-])(arrow)?down(?:$|[\s_-])|decrease|negative|向下|下降/.test(signal);
+  if (isUp === isDown) {
+    return /trendflat|trendvalueflat|(?:^|[\s_-])(flat|stable)(?:$|[\s_-])|持平/.test(signal)
+      ? 'flat'
+      : 'unknown';
+  }
+  return isUp ? 'up' : 'down';
+}
+
 async function getBusinessTableState(page) {
   const tables = await page.evaluate(() => Array.from(document.querySelectorAll('table')).map((table, index) => {
     const headerElements = Array.from(table.querySelectorAll('th'));
     const headers = headerElements.map((header) => header.innerText?.trim() || '');
     const salesColumnIndex = headers.findIndex((header) => header.replace(/\s+/g, '').includes('成交金额'));
+    const growthColumnIndex = headers.findIndex((header) => header.replace(/\s+/g, '').includes('成交增速'));
     const salesHeader = salesColumnIndex >= 0 ? headerElements[salesColumnIndex] : null;
     const tbody = table.querySelector('tbody');
     const dataRows = Array.from(tbody?.querySelectorAll('tr') || []).filter((row) => {
@@ -28,9 +45,24 @@ async function getBusinessTableState(page) {
     const rows = dataRows.map((row) => {
       const cells = row.querySelectorAll('td');
       const name = cells[0]?.querySelector('.__bu_card_title__, .name-PRUTXd');
+      const growthCell = growthColumnIndex >= 0 ? cells[growthColumnIndex] : null;
+      const growthElements = growthCell ? [growthCell, ...growthCell.querySelectorAll('*')] : [];
       return {
         keyword: name?.innerText?.trim() || '',
         salesAmount: salesColumnIndex >= 0 ? cells[salesColumnIndex]?.innerText?.trim() || '' : '',
+        growthDescriptor: {
+          classNames: growthElements.map((element) => element.getAttribute?.('class') || '').join(' '),
+          labels: growthElements.flatMap((element) => [
+            element.getAttribute?.('aria-label'),
+            element.getAttribute?.('title'),
+            element.getAttribute?.('data-trend'),
+            element.getAttribute?.('data-direction'),
+          ]).filter(Boolean).join(' '),
+          arrowFills: Array.from(growthCell?.querySelectorAll('svg path') || [])
+            .map((path) => path.getAttribute('fill'))
+            .filter(Boolean),
+          text: growthCell?.innerText?.trim() || '',
+        },
       };
     }).filter((row) => row.keyword && row.salesAmount);
     const tableRoot = table.closest('.aurora-table-wrapper') || table.parentElement;
@@ -43,6 +75,7 @@ async function getBusinessTableState(page) {
     return {
       index,
       headers,
+      growthColumnIndex,
       rawRowCount: dataRows.length,
       rows,
       sortDirection,
@@ -51,9 +84,18 @@ async function getBusinessTableState(page) {
   }));
 
   const table = findBusinessTable(tables);
-  return table || {
+  if (table) {
+    table.rows = table.rows.map((row) => ({
+      keyword: row.keyword,
+      salesAmount: row.salesAmount,
+      growthTrend: classifyGrowthTrend(row.growthDescriptor),
+    }));
+    return table;
+  }
+  return {
     index: -1,
     headers: [],
+    growthColumnIndex: -1,
     rawRowCount: 0,
     rows: [],
     sortDirection: 'none',
@@ -86,6 +128,7 @@ async function clickBusinessKeyword(page, tableIndex, keyword) {
 
 module.exports = {
   areSalesValuesDescending,
+  classifyGrowthTrend,
   clickBusinessKeyword,
   clickSalesSorter,
   findBusinessTable,

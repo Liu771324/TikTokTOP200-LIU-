@@ -5,6 +5,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { stopRequested } = require('./collection_control');
 const { saveReports } = require('./report_output');
+const { groupProducts } = require('./product_grouping');
 const taskStore = require('./task-store');
 
 function removeCombinationData(task, combinationId) {
@@ -44,10 +45,13 @@ function recomputeTaskStats(task) {
     unparseable: 0,
     unavailable: 0,
     retrySuccess: 0,
+    prefilterPassed: 0,
+    prefilterSkipped: 0,
+    detailsOpened: 0,
   };
   for (const combination of task.combinations) {
     stats.qualifyingCount += combination.qualifyingCount || 0;
-    for (const key of ['normal', 'fast', 'down', 'flat', 'unparseable', 'unavailable', 'retrySuccess']) {
+    for (const key of ['normal', 'fast', 'down', 'flat', 'unparseable', 'unavailable', 'retrySuccess', 'prefilterPassed', 'prefilterSkipped', 'detailsOpened']) {
       stats[key] += combination.stats?.[key] || 0;
     }
   }
@@ -56,6 +60,7 @@ function recomputeTaskStats(task) {
 }
 
 function taskReportPayload(task, completion) {
+  task.results = groupProducts(task.results);
   const stats = recomputeTaskStats(task);
   return {
     taskId: task.taskId,
@@ -66,6 +71,7 @@ function taskReportPayload(task, completion) {
     totalCategories: stats.totalCategories,
     minSales: task.parameters.minSales,
     maxSales: task.parameters.maxSales,
+    only30dGrowth: task.parameters.only30dGrowth === true,
     results: task.results,
     qualifyingCount: stats.qualifyingCount,
     elapsedSeconds: Math.round((Date.now() - new Date(task.startedAt || task.createdAt).getTime()) / 1000),
@@ -78,22 +84,27 @@ function taskReportPayload(task, completion) {
   };
 }
 
+function buildCollectorEnv(task, combination, resultFile, stopFile, pauseFile) {
+  const category = combination.category;
+  return {
+    ...process.env,
+    CATEGORY_SEARCH: category.segments.at(-1),
+    CATEGORY_LABEL: category.displayPath,
+    CATEGORY_PATH: category.displayPath,
+    MIN_SALES: String(task.parameters.minSales),
+    MAX_SALES: task.parameters.maxSales == null ? '' : String(task.parameters.maxSales),
+    ONLY_30D_GROWTH: task.parameters.only30dGrowth === true ? '1' : '0',
+    CDP_URL: process.env.CDP_URL,
+    STOP_FILE: stopFile,
+    PAUSE_FILE: pauseFile,
+    RESULT_FILE: resultFile,
+    SKIP_REPORT: '1',
+  };
+}
+
 function runCollector(task, combination, resultFile, stopFile, pauseFile) {
   return new Promise((resolve) => {
-    const category = combination.category;
-    const env = {
-      ...process.env,
-      CATEGORY_SEARCH: category.segments.at(-1),
-      CATEGORY_LABEL: category.displayPath,
-      CATEGORY_PATH: category.displayPath,
-      MIN_SALES: String(task.parameters.minSales),
-      MAX_SALES: task.parameters.maxSales == null ? '' : String(task.parameters.maxSales),
-      CDP_URL: process.env.CDP_URL,
-      STOP_FILE: stopFile,
-      PAUSE_FILE: pauseFile,
-      RESULT_FILE: resultFile,
-      SKIP_REPORT: '1',
-    };
+    const env = buildCollectorEnv(task, combination, resultFile, stopFile, pauseFile);
     const child = spawn(process.execPath, ['collect_v4.js'], {
       cwd: __dirname,
       env,
@@ -205,4 +216,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { mergeCombinationResult, recomputeTaskStats, removeCombinationData, runTask, taskReportPayload };
+module.exports = { buildCollectorEnv, mergeCombinationResult, recomputeTaskStats, removeCombinationData, runTask, taskReportPayload };

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   areSalesValuesDescending,
+  classifyGrowthTrend,
   findBusinessTable,
 } = require('../business_table');
 
@@ -37,4 +38,15 @@ test('areSalesValuesDescending accepts equal bands but rejects an ascending step
     '¥7500万-¥1亿',
     '¥2500万-¥5000万',
   ]), false);
+});
+
+test('成交增速方向只读取趋势 DOM 状态而不读取百分比正负号', () => {
+  assert.equal(classifyGrowthTrend({ classNames: 'trendArrowUp trendValuePositive', labels: '', text: '25.4%' }), 'up');
+  assert.equal(classifyGrowthTrend({ classNames: 'trendArrowDown trendValueNegative', labels: '', text: '25.4%' }), 'down');
+  assert.equal(classifyGrowthTrend({ classNames: '', labels: '', text: '-25.4%' }), 'unknown');
+});
+
+test('真实列表 SVG 使用红色向上和绿色向下箭头表达方向', () => {
+  assert.equal(classifyGrowthTrend({ arrowFills: ['#FF3B52'], text: '1.08%' }), 'up');
+  assert.equal(classifyGrowthTrend({ arrowFills: ['#00C87F'], text: '50.41%' }), 'down');
 });

@@ -11,6 +11,7 @@ const {
 const { saveReports } = require('./report_output');
 const { advancePageWithRetry, runAttempts, waitForStablePage } = require('./collector_retry');
 const { stopRequested: isStopRequested, waitWhilePaused } = require('./collection_control');
+const { countClassified, decideGrowthPrefilter, ensureGrowthColumn } = require('./growth_prefilter');
 const {
   areSalesValuesDescending,
   clickBusinessKeyword,
@@ -27,6 +28,7 @@ const CONFIG = {
   maxSales: process.env.MAX_SALES ?? '',
   maxPages: process.env.MAX_PAGES ? Number(process.env.MAX_PAGES) : Infinity,
   maxItems: process.env.MAX_ITEMS ? Number(process.env.MAX_ITEMS) : Infinity,
+  only30dGrowth: process.env.ONLY_30D_GROWTH === '1',
   stopFile: process.env.STOP_FILE || '',
   pauseFile: path.join(__dirname, 'pause.flag'),
   productAttempts: 3,
@@ -440,6 +442,7 @@ async function main() {
     // 3. 按成交金额降序排列
     await ensureDescendingBySales(page);
     await ensureFirstPage(page);
+    ensureGrowthColumn(await getBusinessTableState(page), CONFIG.only30dGrowth);
 
     const results = [];
     const failures = [];
@@ -452,6 +455,9 @@ async function main() {
       unparseable: 0,
       unavailable: 0,
       retrySuccess: 0,
+      prefilterPassed: 0,
+      prefilterSkipped: 0,
+      detailsOpened: 0,
     };
     let qualifyingCount = 0;
     let expectedPageSize = null;
@@ -497,6 +503,14 @@ async function main() {
         pageQualifying += 1;
         qualifyingCount += 1;
 
+        const prefilter = decideGrowthPrefilter(CONFIG.only30dGrowth, row.growthTrend);
+        if (!prefilter.openDetail) {
+          stats.prefilterSkipped += 1;
+          console.log(`[${qualifyingCount}] ${row.keyword}｜近30天预筛选跳过：${prefilter.reason}`);
+          continue;
+        }
+        if (CONFIG.only30dGrowth) stats.prefilterPassed += 1;
+        stats.detailsOpened += 1;
         const readResult = await readProductWithRetries(page, row, qualifyingCount);
         if (!readResult.ok) {
           stats.unavailable += 1;
@@ -575,7 +589,7 @@ async function main() {
       }
     }
 
-    const classifiedCount = stats.normal + stats.fast + stats.down + stats.flat + stats.unparseable + stats.unavailable;
+    const classifiedCount = countClassified(stats);
     if (classifiedCount !== qualifyingCount) {
       throw new Error(`完整性校验失败：已归类 ${classifiedCount} 条，达标商品 ${qualifyingCount} 条。为避免生成错误报告，本轮已停止`);
     }
@@ -586,6 +600,7 @@ async function main() {
       categoryLabel: CONFIG.categoryLabel,
       minSales: CONFIG.minSales,
       maxSales: CONFIG.maxSales,
+      only30dGrowth: CONFIG.only30dGrowth,
       results,
       qualifyingCount,
       elapsedSeconds,
@@ -596,7 +611,7 @@ async function main() {
       completion,
     });
     const outcome = completion.status === 'partial' ? '已停止，部分报告已生成' : '完成';
-    console.log(`\n${outcome}：${qualifyingCount} 条全部归类，${results.length} 条增长，${stats.retrySuccess} 条重试成功，${stats.unavailable} 条三次后无数据`);
+    console.log(`\n${outcome}：${qualifyingCount} 条全部归类，近30天通过 ${stats.prefilterPassed} 条、跳过 ${stats.prefilterSkipped} 条，实际打开详情 ${stats.detailsOpened} 条，${results.length} 条增长，${stats.retrySuccess} 条重试成功，${stats.unavailable} 条三次后无数据`);
     console.log(`报告：${paths.latestPath}`);
     console.log(`归档：${paths.archivePath}`);
   } finally {

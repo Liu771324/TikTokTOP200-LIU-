@@ -75,6 +75,7 @@ function createTaskStore(rootDir = __dirname) {
         categories,
         minSales: parameters.minSales,
         maxSales: parameters.maxSales,
+        only30dGrowth: parameters.only30dGrowth === true,
       },
       combinations,
       current: null,

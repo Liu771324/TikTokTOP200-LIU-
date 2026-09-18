@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { escapeMarkdownCell } = require('./collect_utils');
 const { generateExcelReport } = require('./export_excel');
+const { countClassified } = require('./growth_prefilter');
+const { groupProducts } = require('./product_grouping');
 
 function reportTimestamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, '0');
@@ -37,8 +39,8 @@ function buildMarkdown(payload) {
     outputTime,
     completion = { status: 'complete', coverageComplete: true },
   } = payload;
-  const classifiedCount = ['normal', 'fast', 'down', 'flat', 'unparseable', 'unavailable']
-    .reduce((sum, key) => sum + (stats[key] || 0), 0);
+  const classifiedCount = countClassified(stats);
+  const groupedResults = groupProducts(results);
   const rangeText = maxSales == null
     ? `${formatBound(minSales)} 以上`
     : `${formatBound(minSales)}—${formatBound(maxSales)}`;
@@ -52,12 +54,16 @@ function buildMarkdown(payload) {
     `> 采集时间: ${outputTime.toLocaleString('zh-CN')}`,
     `> 品类: ${categorySummary}`,
     `> 筛选: 近30天成交金额展示档位完整落入 ${rangeText}，今日成交 > 昨日`,
+    `> 近30天预筛选: ${payload.only30dGrowth ? '已启用（仅红色向上箭头）' : '未启用'}`,
     `> 采集状态: ${completionLabel(completion)}`,
     `> 区间覆盖: ${completion.coverageComplete ? '已完成' : '未完成'}`,
   ];
   if (payload.taskId) lines.push(`> 任务编号: ${payload.taskId}`);
   if (payload.totalCategories || payload.categoryLabels) lines.push(`> 类目进度: ${completedCategories}/${totalCategories}`);
-  lines.push(`> 采集: ${qualifyingCount} 条 | 正常增长: ${stats.normal || 0} 条 | 增速快: ${stats.fast || 0} 条 | 下跌: ${stats.down || 0} 条 | 持平: ${stats.flat || 0} 条 | 无法解析: ${stats.unparseable || 0} 条 | 重试成功: ${stats.retrySuccess || 0} 条 | 三次后无数据: ${stats.unavailable || 0} 条 | 完整性: ${classifiedCount}/${qualifyingCount} | 耗时: ${elapsedSeconds} 秒`);
+  const prefilterStats = payload.only30dGrowth
+    ? ` | 预筛选通过: ${stats.prefilterPassed || 0} 条 | 预筛选跳过: ${stats.prefilterSkipped || 0} 条 | 实际打开详情: ${stats.detailsOpened || 0} 条`
+    : '';
+  lines.push(`> 采集: ${qualifyingCount} 条${prefilterStats} | 正常增长: ${stats.normal || 0} 条 | 增速快: ${stats.fast || 0} 条 | 下跌: ${stats.down || 0} 条 | 持平: ${stats.flat || 0} 条 | 无法解析: ${stats.unparseable || 0} 条 | 重试成功: ${stats.retrySuccess || 0} 条 | 三次后无数据: ${stats.unavailable || 0} 条 | 完整性: ${classifiedCount}/${qualifyingCount} | 耗时: ${elapsedSeconds} 秒`);
 
   if (completion.status === 'partial') {
     lines.push(`> 停止原因: ${completion.message || completion.reason || '采集提前结束'}`);
@@ -70,9 +76,9 @@ function buildMarkdown(payload) {
     }
   }
 
-  lines.push('', '## 成交增长明细', '', '| # | 类目 | 产品名称 | 近30天总成交 | 昨日成交 | 今日成交 | 较昨日增长 |', '|---|------|----------|-------------|----------|----------|------------|');
-  results.forEach((item, index) => {
-    lines.push(`| ${index + 1} | ${escapeMarkdownCell(itemCategory(item, payload))} | ${escapeMarkdownCell(item.keyword)} | ${escapeMarkdownCell(item.totalSales)} | ${escapeMarkdownCell(item.yesterday)} | ${escapeMarkdownCell(item.today)} | ${escapeMarkdownCell(item.growth)} |`);
+  lines.push('', '## 成交增长明细', '', '| # | 产品分组 | 类目 | 产品名称 | 近30天总成交 | 昨日成交 | 今日成交 | 较昨日增长 |', '|---|----------|------|----------|-------------|----------|----------|------------|');
+  groupedResults.forEach((item, index) => {
+    lines.push(`| ${index + 1} | ${escapeMarkdownCell(item.productGroup)} | ${escapeMarkdownCell(itemCategory(item, payload))} | ${escapeMarkdownCell(item.keyword)} | ${escapeMarkdownCell(item.totalSales)} | ${escapeMarkdownCell(item.yesterday)} | ${escapeMarkdownCell(item.today)} | ${escapeMarkdownCell(item.growth)} |`);
   });
   if (unparseableItems.length) {
     lines.push('', '## 无法解析', '', '| 类目 | 产品名称 | 原因 |', '|------|----------|------|');
@@ -104,11 +110,12 @@ function taskWorkerPayload(payload) {
 }
 
 async function saveReports(inputPayload, rootDir = __dirname) {
-  const payload = taskWorkerPayload(inputPayload);
+  let payload = taskWorkerPayload(inputPayload);
   if (process.env.RESULT_FILE) fs.writeFileSync(process.env.RESULT_FILE, JSON.stringify(payload, null, 2), 'utf8');
   if (process.env.SKIP_REPORT === '1') {
     return { archivePath: process.env.RESULT_FILE, latestPath: process.env.RESULT_FILE, jsonPath: process.env.RESULT_FILE, xlsxPath: null, partial: payload.completion?.status === 'partial' };
   }
+  payload = { ...payload, results: groupProducts(payload.results || []) };
   const reportDir = path.join(rootDir, 'reports');
   fs.mkdirSync(reportDir, { recursive: true });
   const partial = payload.completion?.status === 'partial';

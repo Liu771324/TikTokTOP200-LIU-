@@ -20,6 +20,7 @@ test('任务按类目顺序创建组合并原子保存快照', () => {
   assert.equal(task.combinations.length, 2);
   assert.deepEqual(task.combinations.map((item) => item.category.displayPath), task.parameters.categories.map((item) => item.displayPath));
   assert.deepEqual(task.combinations.map((item) => item.status), ['pending', 'pending']);
+  assert.equal(task.parameters.only30dGrowth, false);
   assert.equal(store.loadTask(task.taskId).taskId, task.taskId);
   assert.equal(fs.readdirSync(store.CHECKPOINT_DIR).length, 1);
   fs.rmSync(root, { recursive: true, force: true });
@@ -32,6 +33,7 @@ test('恢复任务跳过已完成类目，重试只重置失败类目', () => {
     categories: ['A', 'B', 'C'].map((name) => ({ displayPath: name, segments: [name] })),
     minSales: 0,
     maxSales: null,
+    only30dGrowth: true,
   });
   task.combinations[0].status = 'completed';
   task.combinations[1].status = 'stopped';
@@ -44,5 +46,6 @@ test('恢复任务跳过已完成类目，重试只重置失败类目', () => {
   resumed.combinations[2].status = 'failed';
   const retried = store.prepareTask(resumed, { mode: 'retry' });
   assert.deepEqual(retried.combinations.map((item) => item.status), ['completed', 'stopped', 'pending']);
+  assert.equal(retried.parameters.only30dGrowth, true);
   fs.rmSync(root, { recursive: true, force: true });
 });

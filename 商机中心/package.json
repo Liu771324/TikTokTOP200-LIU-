@@ -8,7 +8,7 @@
     "excel": "node export_excel.js",
     "test": "node --test \"test/*.test.js\"",
     "test:ui": "node test/ui_smoke.js",
-    "check": "node --check collect_v4.js && node --check business_table.js && node --check batch-runner.js && node --check category_discovery.js && node --check task-store.js && node --check collection_control.js && node --check collector_retry.js && node --check collect_utils.js && node --check report_output.js && node --check export_excel.js && node --check server.js && node --check edge.js && npm test"
+    "check": "node --check collect_v4.js && node --check business_table.js && node --check growth_prefilter.js && node --check product_grouping.js && node --check batch-runner.js && node --check category_discovery.js && node --check task-store.js && node --check collection_control.js && node --check collector_retry.js && node --check collect_utils.js && node --check report_output.js && node --check export_excel.js && node --check server.js && node --check edge.js && npm test"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

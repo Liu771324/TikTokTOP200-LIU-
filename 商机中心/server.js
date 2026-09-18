@@ -180,7 +180,12 @@ async function handleCreateTask(request, response) {
     sendJson(response, 200, { ok: true, needLogin: true });
     return;
   }
-  const task = taskStore.createTask({ categories, minSales: bounds.minSales, maxSales: bounds.maxSales });
+  const task = taskStore.createTask({
+    categories,
+    minSales: bounds.minSales,
+    maxSales: bounds.maxSales,
+    only30dGrowth: body.only30dGrowth === true,
+  });
   startTask(task);
   sendJson(response, 202, { ok: true, task: publicTask(task, false) });
 }
@@ -195,7 +200,12 @@ async function handleLegacyStart(request, response) {
   if (edgeState.status === 'need-path') { sendJson(response, 200, { ok: true, needPath: true }); return; }
   if (edgeState.status === 'launched') { sendJson(response, 200, { ok: true, needLogin: true }); return; }
   const category = normalizeCategory({ displayPath: body.label });
-  const task = taskStore.createTask({ categories: [category], minSales: bounds.minSales, maxSales: bounds.maxSales });
+  const task = taskStore.createTask({
+    categories: [category],
+    minSales: bounds.minSales,
+    maxSales: bounds.maxSales,
+    only30dGrowth: body.only30dGrowth === true,
+  });
   startTask(task);
   sendJson(response, 202, { ok: true, task: publicTask(task, false) });
 }
