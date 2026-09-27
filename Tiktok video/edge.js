@@ -182,4 +182,4 @@ async function connectTargetPage() {
   throw new Error(`当前页面不是短视频榜（激活标签：${activeLabels.join('、') || '未识别'}）`);
 }
 
-module.exports = { CDP_URL, TARGET_PATH, connectTargetPage, openVideoRanking };
+module.exports = { CDP_URL, TARGET_PATH, connectTargetPage, findEdgePath, openVideoRanking };

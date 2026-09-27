@@ -89,7 +89,7 @@ function renderTask(task) {
   const statusNames = { queued: '排队中', running: '运行中', paused: '已暂停', stopped: '已停止', completed: '已完成', failed: '失败' };
   if (!task) {
     $('taskStatus').textContent = '当前没有任务。';
-    for (const id of ['scanned', 'eligible', 'saved', 'failed', 'captionFailed']) $(id).textContent = '0';
+    for (const id of ['scanned', 'eligible', 'saved', 'failed', 'duplicatesSkipped', 'captionFailed']) $(id).textContent = '0';
     for (const id of ['pauseTask', 'resumeTask', 'stopTask']) $(id).disabled = true;
     return;
   }
@@ -100,6 +100,7 @@ function renderTask(task) {
   $('eligible').textContent = task.progress.eligible;
   $('saved').textContent = task.progress.videosSaved;
   $('failed').textContent = task.progress.videoFailures;
+  $('duplicatesSkipped').textContent = task.progress.duplicatesSkipped || 0;
   $('captionFailed').textContent = task.progress.captionFailures || 0;
   $('pauseTask').disabled = task.status !== 'running';
   $('resumeTask').disabled = !['paused', 'stopped', 'failed'].includes(task.status) &&

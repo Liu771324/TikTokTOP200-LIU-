@@ -33,7 +33,7 @@ function createTask(parameters) {
     completedAt: null,
     status: 'queued',
     parameters,
-    progress: { scanned: 0, eligible: 0, videosSaved: 0, videoFailures: 0, captionFailures: 0, currentRank: null, currentProduct: null, currentVideo: null },
+    progress: { scanned: 0, eligible: 0, videosSaved: 0, videoFailures: 0, duplicatesSkipped: 0, captionFailures: 0, currentRank: null, currentProduct: null, currentVideo: null },
     logs: [],
     errors: [],
     checkpoint: { page: 1, rank: 1, productId: null, videoIndex: 0, completedVideos: {}, failedVideos: {}, eligibleRanks: [], trendErrors: [], productDirs: {}, rankProducts: {}, initialTotal: null, pageSize: null },
