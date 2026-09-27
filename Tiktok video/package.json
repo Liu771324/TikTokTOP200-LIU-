@@ -1,0 +1,15 @@
+{
+  "name": "tiktok-video-collector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "抖音电商罗盘短视频榜本地采集工具",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "playwright-core": "1.58.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

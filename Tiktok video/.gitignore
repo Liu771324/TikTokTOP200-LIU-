@@ -1,0 +1,5 @@
+node_modules/
+data/
+logs/
+视频/
+*.part
