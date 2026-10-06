@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>商品标题工作台</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="shop-sidebar" aria-labelledby="shops-heading">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">T<span>↗</span></span><div><h1>标题工作台</h1><p>商品标题批量更新</p></div></div>
+      <div class="sidebar-section"><div class="section-heading"><h2 id="shops-heading">店铺范围</h2><span id="selected" class="count-label">0 / 0</span></div><p class="section-note">勾选本次要修改的店铺</p></div>
+      <div class="selection-actions"><button id="all" class="text-button">全选</button><button id="none" class="text-button">清空选择</button></div>
+      <div id="shops" class="shops"></div>
+      <div id="shops-empty" class="muted-empty" hidden>点击“连接 Edge”后，店铺将自动显示</div>
+      <div class="sidebar-bottom"><p>任务开始后锁定范围<br>已成功的修改会保留</p><button id="exit" class="text-button exit-button">退出工作台 <span aria-hidden="true">↗</span></button></div>
+    </aside>
+    <main>
+      <header class="page-header"><div><p class="page-eyebrow">商品管理 / 标题更新</p><h2>批量修改商品标题</h2><p class="page-description">核对替换内容，连接浏览器后选择店铺。</p></div><div class="top-actions"><span id="connection" role="status" class="connection">未连接</span><button id="connect" class="connect-button">连接 Edge</button><button id="refresh" class="secondary">重新读取</button></div></header>
+      <div id="notice" role="alert" class="alert" hidden></div>
+      <div id="connection-help" class="alert" role="status" hidden></div>
+      <section class="file-strip" aria-label="输入表格"><div class="file-badge" aria-hidden="true">X</div><div class="file-info"><strong id="input-file-name">标题.xls / 标题.xlsx</strong><p id="input-summary">正在读取表格…</p></div><span id="file-read-state" class="file-read-state">读取中</span></section>
+      <div id="input-error" role="alert" class="inline-error"></div>
+      <nav class="view-tabs" role="tablist" aria-label="工作台视图"><button id="preview-tab" role="tab" aria-controls="preview-view" aria-selected="true" tabindex="0">标题预览</button><button id="results-tab" role="tab" aria-controls="results-view" aria-selected="false" tabindex="-1">执行结果 <span id="result-tab-count" hidden>0</span></button><span class="view-hint">按表格顺序逐组处理</span></nav>
+      <section id="preview-view" role="tabpanel" aria-labelledby="preview-tab">
+        <div class="editor-card"><aside class="group-navigation"><div class="group-nav-heading"><h3>原标题分组</h3><span id="group-total">0 组</span></div><div id="group-tabs" class="group-tabs" role="tablist" aria-label="查看标题分组" aria-orientation="vertical"></div><p class="group-nav-note">切换仅用于预览<br>开始后会处理全部分组</p></aside><section class="title-editor" aria-label="新旧标题预览"><div id="groups"></div><div id="preview-empty" class="muted-empty" hidden>读取表格后，在这里核对原标题和新标题。</div><div class="assignment-note"><span aria-hidden="true">↳</span><p>新标题按顺序对应查询结果，多出的商品保持原样。</p></div></section></div>
+        <details id="skipped-details" class="skipped-details" hidden><summary id="skipped-summary"></summary><div id="skipped"></div></details>
+      </section>
+      <section id="results-view" role="tabpanel" aria-labelledby="results-tab" hidden>
+        <div class="results-card"><div class="section-heading"><div><h3>本次执行</h3><span id="task-badge" class="badge">未开始</span></div><div class="report-actions"><a id="download-failures" class="secondary download-button" href="/api/failures.xlsx" hidden>下载失败 Excel</a><a id="download" class="secondary download-button" href="/api/report" hidden>下载结果</a></div></div>
+          <div id="result-empty" class="result-empty"><span class="empty-symbol" aria-hidden="true">↳</span><strong>还没有执行任务</strong><p>先选择店铺并核对标题，开始后逐件显示结果。</p></div>
+          <div id="result-content" hidden><div class="result-overview"><div><p id="task-message" role="status"></p><p id="scope"></p></div><div class="result-counts"><span><b id="saved-count">0</b>成功保存</span><span><b id="failed-count">0</b>失败 / 待核对</span><span><b id="remaining-count">0</b>待执行</span></div></div><div id="stop-position" role="alert" class="stop-position" hidden></div><div id="group-results" class="group-results"></div><div id="items" class="items"></div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="actionbar"><div class="actionbar-inner"><div class="run-summary"><span id="run-indicator" class="run-indicator" aria-hidden="true"></span><div><strong id="run-heading">先选择要修改的店铺</strong><p id="run-note">支持 XLS 与 XLSX，原表格保持不变</p></div></div><div class="run-actions"><button id="stop" class="secondary" disabled hidden>停止任务</button><button id="start" class="primary" disabled><span>开始修改标题</span><span aria-hidden="true">→</span></button></div></div></div>
+</body></html>

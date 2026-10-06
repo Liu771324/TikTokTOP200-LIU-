@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8"><title>模拟小猪</title>
+<div class="search-table"><select id="status"><option value="">所有</option><option value="0">在售</option></select><input id="nameDisplay"><textarea id="name"></textarea><input id="productId"><input id="excludeName"><input id="minPrice"><input id="categoryIds" type="hidden"></div>
+<label class="shop-check-item"><input class="selectShop" type="checkbox" data-shopid="101"><span class="shop-check-name">甲店(当前店铺)</span></label>
+<label class="shop-check-item"><input class="selectShop" type="checkbox" data-shopid="202"><span class="shop-check-name">乙店</span></label>
+<button id="searchBtn">查询</button><span class="shop-query-progress"></span><table><tbody id="searchItemResult"></tbody></table>
+<script>
+const cache = new WeakMap();
+window.jQuery = e => ({data: (key, value) => { if (!cache.has(e)) cache.set(e, {}); const values = cache.get(e); if (value !== undefined) values[key] = value; return values[key]; }});
+window.isSearching = false;
+const el = (tag, cls, text = '') => { const e = document.createElement(tag); e.className = cls; e.textContent = text; return e; };
+function render(p) {
+  const row = el('tr', 'find-pid-trow'); row.dataset.id = p.id; row.dataset.shopid = p.shopId;
+  for (let i = 0; i < 7; i++) row.append(el('td', '', i === 5 ? p.shopName : ''));
+  const wrap = el('div', 'title-edit-wrap'), input = el('textarea', 'title-input');
+  input.value = p.title; jQuery(input).data('oldtitle', p.title);
+  const count = el('span', 'title-len-bar'), result = el('span', 'title-save-result'), save = el('button', 'title-save-btn', '保存');
+  function validate() {
+    const n = [...input.value].reduce((a,c) => a + (c.charCodeAt(0) > 127 ? 2 : 1), 0);
+    count.textContent = n + '/60'; input.setAttribute('aria-invalid', n > 60 ? 'true' : 'false');
+    save.disabled = n > 60 || input.value === jQuery(input).data('oldtitle') || !!jQuery(wrap).data('saving');
+  }
+  input.oninput = () => { input.value = input.value.replace(/[\r\n]/g, ''); result.textContent = ''; validate(); };
+  save.onclick = async () => {
+    jQuery(wrap).data('saving', true); input.readOnly = true; result.textContent = '保存中...'; validate();
+    try {
+      const response = await fetch('/c/batchTitle/modify', {method:'POST',body:new URLSearchParams({iid:p.id,newTitle:input.value,sourceShopId:p.shopId})});
+      const r = await response.json();
+      if (r.log?.status === 1) { jQuery(input).data('oldtitle', input.value); result.textContent = '保存成功'; }
+      else result.textContent = r.log?.apiErrorMsg || r.msg || '保存失败';
+    } catch { result.textContent = '保存失败，请重试'; }
+    jQuery(wrap).data('saving', false); input.readOnly = false; validate();
+    // 模拟保存后页面排序变化，自动化必须继续按 ID 定位。
+    document.querySelector('#searchItemResult').append(row);
+  };
+  wrap.append(input, count, save, result); row.cells[3].append(wrap); validate(); return row;
+}
+document.querySelector('#searchBtn').onclick = async () => {
+  isSearching = true; const target = document.querySelector('#searchItemResult'); target.replaceChildren();
+  const shops = [...document.querySelectorAll('.selectShop:checked')]; let done = 0;
+  const progress = () => document.querySelector('.shop-query-progress').textContent = '已查询店铺：' + done + ' / ' + shops.length;
+  progress();
+  await Promise.all(shops.map(async cb => {
+    try {
+      const response = await fetch('/c/combainSearch/search', {method:'POST',body:new URLSearchParams({name:document.querySelector('#name').value,shopId:cb.dataset.shopid})});
+      const r = await response.json();
+      if (r.status === 'error') { const error = el('tr','combain-error-row',r.msg); target.append(error); }
+      else r.data.forEach(p => target.append(render(p)));
+    } catch { target.append(el('tr','combain-error-row','网络查询失败')); }
+    done++; progress();
+  }));
+  isSearching = false;
+};
+</script>
