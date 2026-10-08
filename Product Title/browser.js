@@ -81,7 +81,7 @@ class ShopBrowser {
     if (!await this.page.locator('.selectShop').count()) {
       return { status: 'waiting-login', message: '等待小猪页面完成登录或加载店铺' };
     }
-    return { status: 'ready', message: '已连接 Edge，可以选择店铺', shops: await this.shops() };
+    return { status: 'ready', message: '已连接 Edge，可以选择店铺和商品状态', shops: await this.shops(), productStatuses: await this.productStatuses() };
   }
 
   async hasVerification(page) {
@@ -106,13 +106,19 @@ class ShopBrowser {
     })));
   }
 
-  async query(original, shops, signal) {
+  async productStatuses() {
+    return this.page.locator('#status').evaluate(e => [...e.options]
+      .filter(o => !o.disabled).map(o => ({ value: o.value, label: o.textContent.trim() })));
+  }
+
+  async query(original, shops, signal, productStatus = '') {
     check(signal);
     this.restoreQuery = null;
     await this.assertReady();
     if (await this.page.evaluate(() => window.isSearching !== false)) throw new Error('小猪页面已有查询正在进行，请等待完成');
     const known = await this.shops();
     if (shops.some(s => !known.some(k => k.id === s.id))) throw new Error('店铺列表已变化，请刷新后重新选择');
+    if (!(await this.productStatuses()).some(s => s.value === productStatus)) throw new Error('商品状态选项已变化，请刷新后重新选择');
     // 清空实际查询表单，而不点击“清空”（页面清空按钮会立即发起查询）。
     await this.page.locator('.search-table').evaluate((container, { original, ids }) => {
       for (const e of container.querySelectorAll('input,textarea,select')) {
@@ -126,12 +132,13 @@ class ShopBrowser {
       document.querySelectorAll('.shopCategoryBar').forEach(e => e.remove());
       document.querySelector('#name').value = original;
       document.querySelector('#nameDisplay').value = original;
-      document.querySelector('#status').value = '';
       for (const cb of document.querySelectorAll('.selectShop')) {
         cb.checked = ids.includes(cb.dataset.shopid);
         cb.dispatchEvent(new Event('change', { bubbles: true }));
       }
     }, { original, ids: shops.map(s => s.id) });
+    await this.page.locator('#status').selectOption(productStatus);
+    if (await this.page.locator('#status').inputValue() !== productStatus) throw new Error('页面商品状态与任务范围不一致');
     const actual = await this.page.locator('.selectShop:checked').evaluateAll(es => es.map(e => e.dataset.shopid));
     if (actual.length !== shops.length || shops.some(s => !actual.includes(s.id))) throw new Error('页面店铺选择与任务范围不一致');
     check(signal);
@@ -161,7 +168,7 @@ class ShopBrowser {
       if (!/^\d+$/.test(p.id) || !shops.some(s => s.id === p.shopId) || keys.has(key)) throw new Error('查询结果商品标识重复或不在所选店铺范围，已停止');
       keys.add(key);
     }
-    this.lastQuery = { original, shops };
+    this.lastQuery = { original, shops, productStatus };
     return products;
   }
 
@@ -185,9 +192,9 @@ class ShopBrowser {
     check(signal);
     await this.assertReady();
     if (this.restoreQuery) {
-      const { original, shops } = this.restoreQuery;
+      const { original, shops, productStatus } = this.restoreQuery;
       this.restoreQuery = null;
-      await this.query(original, shops, signal);
+      await this.query(original, shops, signal, productStatus);
     }
     for (let attempt = 1; attempt <= 2; attempt++) {
       check(signal);
@@ -231,7 +238,7 @@ class ShopBrowser {
         // 网络结果未知时重新做平台实时标题查询，仅确认明确已成功的商品。
         check(signal);
         const previousQuery = this.lastQuery;
-        const products = await this.query(item.target, [{ id: item.shopId, name: item.shopName }], signal);
+        const products = await this.query(item.target, [{ id: item.shopId, name: item.shopName }], signal, previousQuery.productStatus);
         const match = products.find(p => p.id === item.id && p.shopId === item.shopId);
         if (match?.title === item.target) {
           this.restoreQuery = previousQuery;

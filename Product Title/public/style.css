@@ -22,6 +22,12 @@ button,a,input,summary { outline-offset: 4px; }
 .brand-mark > span { position: absolute; right: 5px; bottom: 4px; font-size: 13px; background: #78d7c2; line-height: 1; }
 .brand h1 { font-size: 19px; font-weight: 600; letter-spacing: .5px; }
 .brand p { font-size: 11px; color: #91a6bf; margin-top: 6px; }
+.status-filter { padding-bottom: 24px; }
+.status-filter label { display: block; font-size: 13px; color: #e3ecf7; margin-bottom: 10px; }
+.status-filter select { width: 100%; padding: 10px 8px; border: 1px solid #487d70; border-radius: 7px; color: #e8fff7; background: #285651; font: inherit; cursor: pointer; }
+.status-filter select:disabled { opacity: .6; cursor: not-allowed; }
+.status-filter option { color: var(--ink); background: var(--surface); }
+.status-filter p { color: #94a7bf; font-size: 11px; margin-top: 9px; }
 .sidebar-section { padding-top: 26px; border-top: 1px solid #304158; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .section-heading > div { display: flex; align-items: center; gap: 12px; }

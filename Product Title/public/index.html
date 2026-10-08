@@ -8,6 +8,7 @@
   <div class="app-shell">
     <aside class="shop-sidebar" aria-labelledby="shops-heading">
       <div class="brand"><span class="brand-mark" aria-hidden="true">T<span>↗</span></span><div><h1>标题工作台</h1><p>商品标题批量更新</p></div></div>
+      <div class="status-filter"><label for="product-status">商品状态</label><select id="product-status" aria-describedby="status-note" disabled><option value="">所有</option></select><p id="status-note">仅查询所选状态的商品</p></div>
       <div class="sidebar-section"><div class="section-heading"><h2 id="shops-heading">店铺范围</h2><span id="selected" class="count-label">0 / 0</span></div><p class="section-note">勾选本次要修改的店铺</p></div>
       <div class="selection-actions"><button id="all" class="text-button">全选</button><button id="none" class="text-button">清空选择</button></div>
       <div id="shops" class="shops"></div>
@@ -15,7 +16,7 @@
       <div class="sidebar-bottom"><p>任务开始后锁定范围<br>已成功的修改会保留</p><button id="exit" class="text-button exit-button">退出工作台 <span aria-hidden="true">↗</span></button></div>
     </aside>
     <main>
-      <header class="page-header"><div><p class="page-eyebrow">商品管理 / 标题更新</p><h2>批量修改商品标题</h2><p class="page-description">核对替换内容，连接浏览器后选择店铺。</p></div><div class="top-actions"><span id="connection" role="status" class="connection">未连接</span><button id="connect" class="connect-button">连接 Edge</button><button id="refresh" class="secondary">重新读取</button></div></header>
+      <header class="page-header"><div><p class="page-eyebrow">商品管理 / 标题更新</p><h2>批量修改商品标题</h2><p class="page-description">核对替换内容，连接浏览器后选择店铺和商品状态。</p></div><div class="top-actions"><span id="connection" role="status" class="connection">未连接</span><button id="connect" class="connect-button">连接 Edge</button><button id="refresh" class="secondary">重新读取</button></div></header>
       <div id="notice" role="alert" class="alert" hidden></div>
       <div id="connection-help" class="alert" role="status" hidden></div>
       <section class="file-strip" aria-label="输入表格"><div class="file-badge" aria-hidden="true">X</div><div class="file-info"><strong id="input-file-name">标题.xls / 标题.xlsx</strong><p id="input-summary">正在读取表格…</p></div><span id="file-read-state" class="file-read-state">读取中</span></section>

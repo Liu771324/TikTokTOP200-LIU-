@@ -1,7 +1,7 @@
 'use strict';
 
-function newTask(shops, input) {
-  return { status: 'running', startedAt: new Date().toISOString(), shops,
+function newTask(shops, input, productStatus = { value: '', label: '所有' }) {
+  return { status: 'running', startedAt: new Date().toISOString(), shops, productStatus: { ...productStatus },
     skipped: input.skipped, groups: [], items: [], saved: 0, failed: 0, unchanged: 0, message: '准备查询', stopPosition: null };
 }
 
@@ -22,7 +22,7 @@ async function runTask(task, input, adapter, signal, update = () => {}) {
         update();
         continue;
       }
-      const products = await adapter.query(group.original, task.shops, signal);
+      const products = await adapter.query(group.original, task.shops, signal, task.productStatus.value);
       check();
       currentGroup.productCount = products.length;
       currentGroup.unmodified = products.length;

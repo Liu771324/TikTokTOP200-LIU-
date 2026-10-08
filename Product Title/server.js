@@ -11,7 +11,7 @@ const { failureRows, failureWorkbook } = require('./report');
 const HOST = '127.0.0.1', PORT = 8080, ORIGIN = `http://${HOST}:${PORT}`;
 
 async function startServer({ connect = connectEdge, detect = cdpReady, closeBrowser = closeDebugBrowser, readInput = readWorkbook, open = true, reportDir = path.join(__dirname, 'reports') } = {}) {
-  const state = { app: 'product-title-workbench', phase: 'disconnected', message: '点击“连接 Edge”打开调试浏览器并进入业务页面', shops: [], input: null, inputError: '', task: null };
+  const state = { app: 'product-title-workbench', phase: 'disconnected', message: '点击“连接 Edge”打开调试浏览器并进入业务页面', shops: [], productStatuses: [{ value: '', label: '所有' }], input: null, inputError: '', task: null };
   let browser, adapter, controller, taskPromise, connectionPromise, closing = false, refreshing = false, timer;
   let reportQueue = Promise.resolve();
   let writtenFailures = '';
@@ -50,6 +50,7 @@ async function startServer({ connect = connectEdge, detect = cdpReady, closeBrow
       state.phase = ready.status;
       state.message = ready.message;
       state.shops = ready.shops || [];
+      state.productStatuses = ready.productStatuses || [{ value: '', label: '所有' }];
     } catch (error) {
       state.phase = 'error'; state.message = error.message; state.shops = [];
     } finally { refreshing = false; }
@@ -117,11 +118,15 @@ async function startServer({ connect = connectEdge, detect = cdpReady, closeBrow
           refreshing = true;
           try {
             await adapter.assertReady();
+            state.productStatuses = await adapter.productStatuses();
+            const statusValue = body.productStatus === undefined ? '' : body.productStatus;
+            const productStatus = state.productStatuses.find(s => s.value === statusValue);
+            if (!productStatus) return json(response, 400, { error: '商品状态无效或选项已变化，请重新读取后选择' });
             await loadInput();
             if (state.inputError) return json(response, 400, { error: state.inputError });
             if (!state.input.titleCount) return json(response, 400, { error: 'Sheet1 中没有可执行的新标题' });
             controller = new AbortController();
-            state.task = newTask(shops, state.input);
+            state.task = newTask(shops, state.input, productStatus);
             // 在返回请求前设置 running，阻止并发启动。
             persist();
             taskPromise = runTask(state.task, state.input, adapter, controller.signal, persist);

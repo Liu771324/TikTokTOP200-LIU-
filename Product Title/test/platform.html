@@ -1,5 +1,5 @@
 <!doctype html><meta charset="utf-8"><title>模拟小猪</title>
-<div class="search-table"><select id="status"><option value="">所有</option><option value="0">在售</option></select><input id="nameDisplay"><textarea id="name"></textarea><input id="productId"><input id="excludeName"><input id="minPrice"><input id="categoryIds" type="hidden"></div>
+<div class="search-table"><select id="status"><option value="">所有</option><option value="0">在售</option><option value="1">下架</option><option value="2">草稿箱</option><option value="7">审核中</option><option value="3">封禁</option><option value="4">审核驳回</option><option value="11">审核通过待上架（自主下架）</option><option value="12">下架未提审（平台下架）</option></select><input id="nameDisplay"><textarea id="name"></textarea><input id="productId"><input id="excludeName"><input id="minPrice"><input id="categoryIds" type="hidden"></div>
 <label class="shop-check-item"><input class="selectShop" type="checkbox" data-shopid="101"><span class="shop-check-name">甲店(当前店铺)</span></label>
 <label class="shop-check-item"><input class="selectShop" type="checkbox" data-shopid="202"><span class="shop-check-name">乙店</span></label>
 <button id="searchBtn">查询</button><span class="shop-query-progress"></span><table><tbody id="searchItemResult"></tbody></table>
@@ -41,7 +41,7 @@ document.querySelector('#searchBtn').onclick = async () => {
   progress();
   await Promise.all(shops.map(async cb => {
     try {
-      const response = await fetch('/c/combainSearch/search', {method:'POST',body:new URLSearchParams({name:document.querySelector('#name').value,shopId:cb.dataset.shopid})});
+      const response = await fetch('/c/combainSearch/search', {method:'POST',body:new URLSearchParams({name:document.querySelector('#name').value,shopId:cb.dataset.shopid,status:document.querySelector('#status').value})});
       const r = await response.json();
       if (r.status === 'error') { const error = el('tr','combain-error-row',r.msg); target.append(error); }
       else r.data.forEach(p => target.append(render(p)));

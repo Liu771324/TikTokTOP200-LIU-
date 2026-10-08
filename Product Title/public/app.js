@@ -17,6 +17,7 @@ function controls() {
   $('stop').hidden = !running;
   for (const id of ['refresh', 'all', 'none']) $(id).disabled = busy || stoppedService || running || state?.phase !== 'ready';
   $('refresh').disabled = busy || stoppedService || running || state?.phase === 'connecting';
+  $('product-status').disabled = busy || stoppedService || running || state?.phase !== 'ready';
   $('connect').hidden = ['ready', 'waiting-login'].includes(state?.phase);
   $('connect').disabled = busy || stoppedService || running || state?.phase === 'connecting';
   $('connect').textContent = state?.phase === 'connecting' ? '正在连接…' : state?.phase === 'error' ? '重新连接 Edge' : '连接 Edge';
@@ -123,7 +124,7 @@ function renderResults(task) {
   const current = task.groups[groupIndex];
   $('task-message').textContent = task.status === 'running' ? `${current?.status === 'querying' ? '正在查询商品' : '正在保存标题'} · 第 ${groupIndex + 1} / ${state.input?.groups.length || task.groups.length} 组` : task.status === 'complete' ? `全部分组已处理完成${failureCount ? `，${failureCount} 件失败已记录` : ''}` : '任务已停止，已成功的修改保留';
   $('task-message').title = task.message;
-  $('scope').textContent = `本次店铺：${task.shops.map(s => s.name).join('、')}`;
+  $('scope').textContent = `商品状态：${task.productStatus?.label || '所有'} · 本次店铺：${task.shops.map(s => s.name).join('、')}`;
   $('saved-count').textContent = task.saved;
   $('failed-count').textContent = task.items.filter(item => ['failed', 'uncertain'].includes(item.status)).length;
   $('remaining-count').textContent = task.items.filter(item => ['pending', 'saving'].includes(item.status)).length;
@@ -182,7 +183,18 @@ function renderResults(task) {
 
 function render(next) {
   state = next;
+  const statuses = state.productStatuses || [{ value: '', label: '所有' }];
+  const statusKey = JSON.stringify(statuses);
+  if ($('product-status').dataset.key !== statusKey) {
+    const value = $('product-status').value;
+    $('product-status').replaceChildren(...statuses.map(status => {
+      const option = element('option', status.label); option.value = status.value; return option;
+    }));
+    $('product-status').value = statuses.some(status => status.value === value) ? value : '';
+    $('product-status').dataset.key = statusKey;
+  }
   if (state.task?.status === 'running') {
+    $('product-status').value = state.task.productStatus?.value || '';
     selected.clear();
     state.task.shops.forEach(shop => selected.add(shop.id));
   }
@@ -250,7 +262,7 @@ for (const name of ['preview', 'results']) {
 }
 $('refresh').onclick = () => action(async () => { render(await post('/api/refresh')); });
 $('connect').onclick = () => action(async () => { render(await post('/api/connect')); });
-$('start').onclick = () => action(async () => { await post('/api/start', { shopIds: [...selected] }); });
+$('start').onclick = () => action(async () => { await post('/api/start', { shopIds: [...selected], productStatus: $('product-status').value }); });
 $('stop').onclick = () => action(async () => { const result = await post('/api/stop'); showNotice(result.message); });
 $('exit').onclick = async () => {
   try { await post('/api/shutdown'); } catch (error) { showNotice(error.message); }

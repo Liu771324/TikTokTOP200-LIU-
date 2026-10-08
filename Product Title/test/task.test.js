@@ -7,6 +7,15 @@ const shops = [{ id: '1', name: '甲店' }, { id: '2', name: '乙店' }];
 const input = () => groupRows([['原标题', '新标题'], ['原词', '新一'], ['', '新二'], ['', '新三'], ['', '新四'], ['第二组', '末组']]);
 const products = n => Array.from({ length: n }, (_, i) => ({ id: String(9000 + i), shopId: shops[i % 2].id, shopName: shops[i % 2].name, title: `命中但不完全等于原词${i}` }));
 
+test('任务固定商品状态，所有分组沿用；未指定时默认所有', async () => {
+  const data = input(), status = { value: '7', label: '审核中' }, task = newTask(shops, data, status), queries = [];
+  status.value = '1';
+  await runTask(task, data, { query: async (original, selected, signal, value) => { queries.push([original, value]); return []; } }, new AbortController().signal);
+  assert.deepEqual(task.productStatus, { value: '7', label: '审核中' });
+  assert.deepEqual(queries, [['原词', '7'], ['第二组', '7']]);
+  assert.deepEqual(newTask(shops, data).productStatus, { value: '', label: '所有' });
+});
+
 test('空 A 沿用、重复原标题合并、正文空格保留、空 B 记录跳过', () => {
   const result = groupRows([['原标题', '新标题'], ['词', ' 新一 '], ['', ''], ['别词', '新二'], ['词', '新三']]);
   assert.deepEqual(result.groups.map(g => [g.original, g.titles]), [['词', [' 新一 ', '新三']], ['别词', ['新二']]]);
