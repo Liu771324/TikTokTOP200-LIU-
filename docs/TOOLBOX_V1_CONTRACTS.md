@@ -1,6 +1,6 @@
 # 电商工具箱第一版：接口与数据约定
 
-> 版本：0.2；日期：2026-10-11；状态：待实现接口设计。
+> 版本：0.2；日期：2026-10-11；状态：公共基础部分实现，桌面桥接与业务适配尚待实现。
 >
 > 本文描述未来工具箱接口，不描述旧 HTTP 服务现有 API。以[总体设计](TOOLBOX_V1_PLAN.md)确定范围，按[实施清单](TOOLBOX_V1_EXECUTION.md)验证。
 
@@ -200,6 +200,14 @@ artifact_result 明确返回 disposition（created/exact_reuse/visual_reuse）�
 
 ## 5. Python 下载核心接口
 
+### Node 适配器实施边界（公共基础第一步）
+
+适配器以 CommonJS 导出 `descriptor` 与已实现的方法；worker 仅加载工具 ID 白名单中的模块，不接受界面指定模块路径。方法签名为 `async run(parameters, context, api)`、`discover(parameters, context, api)`、`capture_page(parameters, context, api)`、`download_item(parameters, context, api)`、`read_results(parameters, context, api)`。未实现的方法返回 UNSUPPORTED_OPERATION。
+
+`api.emit(type, data)` 发送带任务/操作身份的事件；`api.checkpoint(state)` 原子写入唯一状态 envelope 后报告 checkpoint；`api.boundary()` 在安全边界处理暂停/取消；`api.register(candidate)` 等待宿主登记并返回 artifact_result。业务代码不得用 console.log 输出协议外数据。控制对象提供 `cancelled`、`pauseRequested`；适配器必须在本单元完成保存后调用 boundary。read_results 不使用 checkpoint 或 register。
+
+候选 `relpath` 相对 dataRoot，必须位于当前任务 artifactStagingRoot；包含 candidateId、kind、role、displayName、metadata。宿主负责计算 hash、移动文件和登记。worker 退出前不会自行删除已提交候选。公共基础验证期间只使用测试适配器，四个真实适配器尚未实现时保持不可用。
+
 保留原有解析与合并逻辑，目标调用边界：
 
 ```text
@@ -234,7 +242,7 @@ manual-video 由宿主协调器维护选中条目快照、逐条状态、attempt
 | --- | --- | --- |
 | queued | 排队中 | running、cancelled |
 | running | 执行中 | pausing、waiting_user、stopping、completed、completed_with_errors、failed、interrupted |
-| pausing | 正在暂停 | paused、stopping、failed、interrupted |
+| pausing | 正在暂停 | paused、stopping、completed、completed_with_errors、failed、interrupted |
 | paused | 已暂停 | running、stopping、interrupted |
 | waiting_user | 等待处理 | running、stopping、interrupted |
 | stopping | 正在停止 | cancelled、failed、interrupted |
@@ -245,6 +253,7 @@ manual-video 由宿主协调器维护选中条目快照、逐条状态、attempt
 | completed | 已完成 | 查看、导出、删除 |
 
 - 正常用户停止显示“已停止”，内部 cancelled；与进程崩溃 interrupted 区分。
+- 暂停请求与末尾完成事件交错时，允许 pausing 直接完成；已完成工作不进入永久暂停等待。停止请求后的末尾结果保留，但任务收敛为 cancelled。
 - completed 表示执行范围已完成且没有未处理错误，不允许仅凭子进程退出码 0 判断。
 - 部分结果可在 failed/cancelled/interrupted 状态下查看，不伪装为整项任务成功。
 - 重试和恢复增加 attempt，已登记的成功视频保留，已完成类目/组合按旧恢复规则跳过。
@@ -263,6 +272,7 @@ SQLite schemaVersion 起始为 1。仅宿主通过数据库事务写入；启用
 | `task_artifacts` | task_id/artifact_id 外键；role、display_name、metadata_json；关联 ID 作为候选登记幂等依据 |
 | `capture_items` | id 主键；source_key 唯一、source_kind、source_page、provider_id 可空、title、public_url 可空、link_kind、locator_json、captured_at |
 | `schema_meta` | 当前 schema_version 与应用版本 |
+| `pending_task_deletions` | 已确认删除任务的 ID 与时间；保留私有目录清理意图，文件占用后重启重试 |
 
 任务配置包含人工选中条目的固定快照。删除或更新待选列表不影响已经创建的任务。视频标题、商品分组及配套文案保存在任务引用元数据中，不依赖共享视频文件名。
 
