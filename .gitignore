@@ -21,6 +21,12 @@
 **/build/
 **/artifacts/
 **/dist/
+**/.artifact-build/
+**/release/
+**/douyin_downloads/
+**/ffmpeg.exe
+Search term/app/runtime/
+**/*.inspect.ndjson
 
 # Local configuration and machine-specific files
 **/config.*.local.json
@@ -28,9 +34,6 @@
 **/.env.*
 !.env.example
 **/.edge-path.txt
-
-# Project outside the confirmed monorepo scope
-Net weight of the product/
 
 # Local business spreadsheets
 **/*.xlsx
