@@ -1,0 +1,965 @@
+{
+  "fixtureVersion": 1,
+  "designVersion": "0.2",
+  "notice": "脱敏静态输入与预期；不代表宿主状态映射、恢复或重试已实现。",
+  "cases": [
+    {
+      "id": "clean",
+      "description": "两组合完成且没有失败记录",
+      "task": {
+        "taskId": "top200-fixture-clean",
+        "taskName": "2026-10-11 09:00｜总榜、搜索榜｜1个类目",
+        "createdAt": "2026-10-11T01:00:00.000Z",
+        "completedAt": "2026-10-11T01:10:00.000Z",
+        "status": "completed",
+        "parameters": {
+          "categories": [
+            {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            }
+          ],
+          "brandType": "不限",
+          "rankingTypes": [
+            "总榜",
+            "搜索榜"
+          ],
+          "periodPolicy": "实时优先，否则近1天",
+          "rankLimit": 200
+        },
+        "stats": {
+          "totalCombinations": 2,
+          "completedCombinations": 2,
+          "scanned": 2,
+          "up": 1,
+          "first": 1,
+          "excluded": 0,
+          "unparseable": 0,
+          "duplicates": 0
+        },
+        "current": null,
+        "combinations": [
+          {
+            "id": "脱敏一级 / 脱敏二级::总榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "总榜",
+            "status": "completed",
+            "scanned": 1,
+            "up": 1,
+            "first": 0,
+            "excluded": 0,
+            "unparseable": 0,
+            "duplicates": 0,
+            "saved": 1,
+            "attempts": 1,
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "endedReason": "页面实际仅 1 条",
+            "completedAt": "2026-10-11T01:10:00.000Z",
+            "error": ""
+          },
+          {
+            "id": "脱敏一级 / 脱敏二级::搜索榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "搜索榜",
+            "status": "completed",
+            "scanned": 1,
+            "up": 0,
+            "first": 1,
+            "excluded": 0,
+            "unparseable": 0,
+            "duplicates": 0,
+            "saved": 1,
+            "attempts": 1,
+            "requestedPeriod": "实时",
+            "actualPeriod": "近1天",
+            "endedReason": "页面实际仅 1 条",
+            "completedAt": "2026-10-11T01:10:00.000Z",
+            "error": ""
+          }
+        ],
+        "results": [
+          {
+            "taskId": "top200-fixture-clean",
+            "collectedAt": "2026-10-11T01:10:00.000Z",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "brandType": "不限",
+            "rankingType": "总榜",
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "rank": 1,
+            "trendType": "up",
+            "trendText": "↑ 2",
+            "riseCount": 2,
+            "productName": "脱敏商品A",
+            "priceRange": "¥20",
+            "productUrl": "https://example.test/product?id=1",
+            "shopName": "脱敏店铺A",
+            "userPaymentAmount": "¥1万-¥2万",
+            "clickCount": "1万-2万",
+            "clickConversionRate": "10%-15%",
+            "orderCount": "100-200",
+            "page": 1,
+            "rowIndex": 1,
+            "extraFields": {},
+            "combinationId": "脱敏一级 / 脱敏二级::总榜"
+          },
+          {
+            "taskId": "top200-fixture-clean",
+            "collectedAt": "2026-10-11T01:10:00.000Z",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "brandType": "不限",
+            "rankingType": "搜索榜",
+            "requestedPeriod": "实时",
+            "actualPeriod": "近1天",
+            "rank": 1,
+            "trendType": "first",
+            "trendText": "首次上榜",
+            "riseCount": null,
+            "productName": "脱敏商品B",
+            "priceRange": "¥20",
+            "productUrl": "https://example.test/product?id=2",
+            "shopName": "脱敏店铺B",
+            "userPaymentAmount": "",
+            "clickCount": "",
+            "clickConversionRate": "",
+            "orderCount": "",
+            "page": 1,
+            "rowIndex": 1,
+            "extraFields": {
+              "热搜词": "脱敏示例词",
+              "商品曝光人数": "2万-3万"
+            },
+            "combinationId": "脱敏一级 / 脱敏二级::搜索榜"
+          }
+        ],
+        "failures": [],
+        "reportFiles": null
+      },
+      "expected": {
+        "trigger": "engine_result",
+        "state": "completed",
+        "resumeCombinationIds": [],
+        "retryCombinationIds": [],
+        "restartPage": null
+      }
+    },
+    {
+      "id": "interrupted",
+      "description": "A 已完成；B 运行至第 2 页，组合内结果尚未合入任务",
+      "task": {
+        "taskId": "top200-fixture-interrupted",
+        "taskName": "2026-10-11 09:00｜总榜、搜索榜｜1个类目",
+        "createdAt": "2026-10-11T01:00:00.000Z",
+        "completedAt": null,
+        "status": "running",
+        "parameters": {
+          "categories": [
+            {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            }
+          ],
+          "brandType": "不限",
+          "rankingTypes": [
+            "总榜",
+            "搜索榜"
+          ],
+          "periodPolicy": "实时优先，否则近1天",
+          "rankLimit": 200
+        },
+        "stats": {
+          "totalCombinations": 2,
+          "completedCombinations": 1,
+          "scanned": 1,
+          "up": 1,
+          "first": 0,
+          "excluded": 0,
+          "unparseable": 0,
+          "duplicates": 0
+        },
+        "current": {
+          "combinationId": "脱敏一级 / 脱敏二级::搜索榜",
+          "categoryPath": "脱敏一级 / 脱敏二级",
+          "rankingType": "搜索榜",
+          "page": 2,
+          "scanned": 20,
+          "up": 1,
+          "first": 0
+        },
+        "combinations": [
+          {
+            "id": "脱敏一级 / 脱敏二级::总榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "总榜",
+            "status": "completed",
+            "scanned": 1,
+            "up": 1,
+            "first": 0,
+            "excluded": 0,
+            "unparseable": 0,
+            "duplicates": 0,
+            "saved": 1,
+            "attempts": 1,
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "endedReason": "页面实际仅 1 条",
+            "completedAt": "2026-10-11T01:10:00.000Z",
+            "error": ""
+          },
+          {
+            "id": "脱敏一级 / 脱敏二级::搜索榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "搜索榜",
+            "status": "running",
+            "scanned": 0,
+            "saved": 0
+          }
+        ],
+        "results": [
+          {
+            "taskId": "top200-fixture-interrupted",
+            "collectedAt": "2026-10-11T01:10:00.000Z",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "brandType": "不限",
+            "rankingType": "总榜",
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "rank": 1,
+            "trendType": "up",
+            "trendText": "↑ 2",
+            "riseCount": 2,
+            "productName": "脱敏商品A",
+            "priceRange": "¥20",
+            "productUrl": "https://example.test/product?id=1",
+            "shopName": "脱敏店铺A",
+            "userPaymentAmount": "¥1万-¥2万",
+            "clickCount": "1万-2万",
+            "clickConversionRate": "10%-15%",
+            "orderCount": "100-200",
+            "page": 1,
+            "rowIndex": 1,
+            "extraFields": {},
+            "combinationId": "脱敏一级 / 脱敏二级::总榜"
+          }
+        ],
+        "failures": [],
+        "reportFiles": null
+      },
+      "expected": {
+        "trigger": "host_restart",
+        "state": "interrupted",
+        "resumeCombinationIds": [
+          "脱敏一级 / 脱敏二级::搜索榜"
+        ],
+        "retryCombinationIds": [],
+        "restartPage": 1
+      }
+    },
+    {
+      "id": "combination_failed",
+      "description": "A 完成；B 在三次组合尝试后失败，旧任务仍写 completed",
+      "task": {
+        "taskId": "top200-fixture-combination_failed",
+        "taskName": "2026-10-11 09:00｜总榜、搜索榜｜1个类目",
+        "createdAt": "2026-10-11T01:00:00.000Z",
+        "completedAt": "2026-10-11T01:10:00.000Z",
+        "status": "completed",
+        "parameters": {
+          "categories": [
+            {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            }
+          ],
+          "brandType": "不限",
+          "rankingTypes": [
+            "总榜",
+            "搜索榜"
+          ],
+          "periodPolicy": "实时优先，否则近1天",
+          "rankLimit": 200
+        },
+        "stats": {
+          "totalCombinations": 2,
+          "completedCombinations": 1,
+          "scanned": 1,
+          "up": 1,
+          "first": 0,
+          "excluded": 0,
+          "unparseable": 0,
+          "duplicates": 0
+        },
+        "current": null,
+        "combinations": [
+          {
+            "id": "脱敏一级 / 脱敏二级::总榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "总榜",
+            "status": "completed",
+            "scanned": 1,
+            "up": 1,
+            "first": 0,
+            "excluded": 0,
+            "unparseable": 0,
+            "duplicates": 0,
+            "saved": 1,
+            "attempts": 1,
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "endedReason": "页面实际仅 1 条",
+            "completedAt": "2026-10-11T01:10:00.000Z",
+            "error": ""
+          },
+          {
+            "id": "脱敏一级 / 脱敏二级::搜索榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "搜索榜",
+            "status": "failed",
+            "scanned": 0,
+            "saved": 0,
+            "attempts": 3,
+            "error": "脱敏模拟：页面分页没有变化"
+          }
+        ],
+        "results": [
+          {
+            "taskId": "top200-fixture-combination_failed",
+            "collectedAt": "2026-10-11T01:10:00.000Z",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "brandType": "不限",
+            "rankingType": "总榜",
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "rank": 1,
+            "trendType": "up",
+            "trendText": "↑ 2",
+            "riseCount": 2,
+            "productName": "脱敏商品A",
+            "priceRange": "¥20",
+            "productUrl": "https://example.test/product?id=1",
+            "shopName": "脱敏店铺A",
+            "userPaymentAmount": "¥1万-¥2万",
+            "clickCount": "1万-2万",
+            "clickConversionRate": "10%-15%",
+            "orderCount": "100-200",
+            "page": 1,
+            "rowIndex": 1,
+            "extraFields": {},
+            "combinationId": "脱敏一级 / 脱敏二级::总榜"
+          }
+        ],
+        "failures": [
+          {
+            "combinationId": "脱敏一级 / 脱敏二级::搜索榜",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "rankingType": "搜索榜",
+            "actualPeriod": "",
+            "page": 1,
+            "stage": "组合采集",
+            "error": "脱敏模拟：页面分页没有变化",
+            "retries": 2,
+            "at": "2026-10-11T01:10:00.000Z"
+          }
+        ],
+        "reportFiles": null
+      },
+      "expected": {
+        "trigger": "engine_result",
+        "state": "completed_with_errors",
+        "resumeCombinationIds": [
+          "脱敏一级 / 脱敏二级::搜索榜"
+        ],
+        "retryCombinationIds": [
+          "脱敏一级 / 脱敏二级::搜索榜"
+        ],
+        "restartPage": 1
+      }
+    },
+    {
+      "id": "row_link_failed",
+      "description": "两组合完成；A 的商品链接获取失败仍保留空链接记录",
+      "task": {
+        "taskId": "top200-fixture-row_link_failed",
+        "taskName": "2026-10-11 09:00｜总榜、搜索榜｜1个类目",
+        "createdAt": "2026-10-11T01:00:00.000Z",
+        "completedAt": "2026-10-11T01:10:00.000Z",
+        "status": "completed",
+        "parameters": {
+          "categories": [
+            {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            }
+          ],
+          "brandType": "不限",
+          "rankingTypes": [
+            "总榜",
+            "搜索榜"
+          ],
+          "periodPolicy": "实时优先，否则近1天",
+          "rankLimit": 200
+        },
+        "stats": {
+          "totalCombinations": 2,
+          "completedCombinations": 2,
+          "scanned": 2,
+          "up": 1,
+          "first": 1,
+          "excluded": 0,
+          "unparseable": 0,
+          "duplicates": 0
+        },
+        "current": null,
+        "combinations": [
+          {
+            "id": "脱敏一级 / 脱敏二级::总榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "总榜",
+            "status": "completed",
+            "scanned": 1,
+            "up": 1,
+            "first": 0,
+            "excluded": 0,
+            "unparseable": 0,
+            "duplicates": 0,
+            "saved": 1,
+            "attempts": 1,
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "endedReason": "页面实际仅 1 条",
+            "completedAt": "2026-10-11T01:10:00.000Z",
+            "error": ""
+          },
+          {
+            "id": "脱敏一级 / 脱敏二级::搜索榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "搜索榜",
+            "status": "completed",
+            "scanned": 1,
+            "up": 0,
+            "first": 1,
+            "excluded": 0,
+            "unparseable": 0,
+            "duplicates": 0,
+            "saved": 1,
+            "attempts": 1,
+            "requestedPeriod": "实时",
+            "actualPeriod": "近1天",
+            "endedReason": "页面实际仅 1 条",
+            "completedAt": "2026-10-11T01:10:00.000Z",
+            "error": ""
+          }
+        ],
+        "results": [
+          {
+            "taskId": "top200-fixture-row_link_failed",
+            "collectedAt": "2026-10-11T01:10:00.000Z",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "brandType": "不限",
+            "rankingType": "总榜",
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "rank": 1,
+            "trendType": "up",
+            "trendText": "↑ 2",
+            "riseCount": 2,
+            "productName": "脱敏商品A",
+            "priceRange": "¥20",
+            "productUrl": "",
+            "shopName": "脱敏店铺A",
+            "userPaymentAmount": "¥1万-¥2万",
+            "clickCount": "1万-2万",
+            "clickConversionRate": "10%-15%",
+            "orderCount": "100-200",
+            "page": 1,
+            "rowIndex": 1,
+            "extraFields": {},
+            "combinationId": "脱敏一级 / 脱敏二级::总榜"
+          },
+          {
+            "taskId": "top200-fixture-row_link_failed",
+            "collectedAt": "2026-10-11T01:10:00.000Z",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "brandType": "不限",
+            "rankingType": "搜索榜",
+            "requestedPeriod": "实时",
+            "actualPeriod": "近1天",
+            "rank": 1,
+            "trendType": "first",
+            "trendText": "首次上榜",
+            "riseCount": null,
+            "productName": "脱敏商品B",
+            "priceRange": "¥20",
+            "productUrl": "https://example.test/product?id=2",
+            "shopName": "脱敏店铺B",
+            "userPaymentAmount": "",
+            "clickCount": "",
+            "clickConversionRate": "",
+            "orderCount": "",
+            "page": 1,
+            "rowIndex": 1,
+            "extraFields": {
+              "热搜词": "脱敏示例词",
+              "商品曝光人数": "2万-3万"
+            },
+            "combinationId": "脱敏一级 / 脱敏二级::搜索榜"
+          }
+        ],
+        "failures": [
+          {
+            "combinationId": "脱敏一级 / 脱敏二级::总榜",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "rankingType": "总榜",
+            "actualPeriod": "实时",
+            "page": 1,
+            "stage": "商品链接",
+            "error": "未取得商品链接：脱敏商品A",
+            "retries": 2,
+            "at": "2026-10-11T01:10:00.000Z"
+          }
+        ],
+        "reportFiles": null
+      },
+      "expected": {
+        "trigger": "engine_result",
+        "state": "completed_with_errors",
+        "resumeCombinationIds": [],
+        "retryCombinationIds": [
+          "脱敏一级 / 脱敏二级::总榜"
+        ],
+        "restartPage": 1
+      }
+    },
+    {
+      "id": "row_trend_failed",
+      "description": "两组合完成；B 额外一条趋势无法识别，没有生成该行结果",
+      "task": {
+        "taskId": "top200-fixture-row_trend_failed",
+        "taskName": "2026-10-11 09:00｜总榜、搜索榜｜1个类目",
+        "createdAt": "2026-10-11T01:00:00.000Z",
+        "completedAt": "2026-10-11T01:10:00.000Z",
+        "status": "completed",
+        "parameters": {
+          "categories": [
+            {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            }
+          ],
+          "brandType": "不限",
+          "rankingTypes": [
+            "总榜",
+            "搜索榜"
+          ],
+          "periodPolicy": "实时优先，否则近1天",
+          "rankLimit": 200
+        },
+        "stats": {
+          "totalCombinations": 2,
+          "completedCombinations": 2,
+          "scanned": 3,
+          "up": 1,
+          "first": 1,
+          "excluded": 0,
+          "unparseable": 1,
+          "duplicates": 0
+        },
+        "current": null,
+        "combinations": [
+          {
+            "id": "脱敏一级 / 脱敏二级::总榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "总榜",
+            "status": "completed",
+            "scanned": 1,
+            "up": 1,
+            "first": 0,
+            "excluded": 0,
+            "unparseable": 0,
+            "duplicates": 0,
+            "saved": 1,
+            "attempts": 1,
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "endedReason": "页面实际仅 1 条",
+            "completedAt": "2026-10-11T01:10:00.000Z",
+            "error": ""
+          },
+          {
+            "id": "脱敏一级 / 脱敏二级::搜索榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "搜索榜",
+            "status": "completed",
+            "scanned": 2,
+            "up": 0,
+            "first": 1,
+            "excluded": 0,
+            "unparseable": 1,
+            "duplicates": 0,
+            "saved": 1,
+            "attempts": 1,
+            "requestedPeriod": "实时",
+            "actualPeriod": "近1天",
+            "endedReason": "页面实际仅 2 条",
+            "completedAt": "2026-10-11T01:10:00.000Z",
+            "error": ""
+          }
+        ],
+        "results": [
+          {
+            "taskId": "top200-fixture-row_trend_failed",
+            "collectedAt": "2026-10-11T01:10:00.000Z",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "brandType": "不限",
+            "rankingType": "总榜",
+            "requestedPeriod": "实时",
+            "actualPeriod": "实时",
+            "rank": 1,
+            "trendType": "up",
+            "trendText": "↑ 2",
+            "riseCount": 2,
+            "productName": "脱敏商品A",
+            "priceRange": "¥20",
+            "productUrl": "https://example.test/product?id=1",
+            "shopName": "脱敏店铺A",
+            "userPaymentAmount": "¥1万-¥2万",
+            "clickCount": "1万-2万",
+            "clickConversionRate": "10%-15%",
+            "orderCount": "100-200",
+            "page": 1,
+            "rowIndex": 1,
+            "extraFields": {},
+            "combinationId": "脱敏一级 / 脱敏二级::总榜"
+          },
+          {
+            "taskId": "top200-fixture-row_trend_failed",
+            "collectedAt": "2026-10-11T01:10:00.000Z",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "brandType": "不限",
+            "rankingType": "搜索榜",
+            "requestedPeriod": "实时",
+            "actualPeriod": "近1天",
+            "rank": 1,
+            "trendType": "first",
+            "trendText": "首次上榜",
+            "riseCount": null,
+            "productName": "脱敏商品B",
+            "priceRange": "¥20",
+            "productUrl": "https://example.test/product?id=2",
+            "shopName": "脱敏店铺B",
+            "userPaymentAmount": "",
+            "clickCount": "",
+            "clickConversionRate": "",
+            "orderCount": "",
+            "page": 1,
+            "rowIndex": 1,
+            "extraFields": {
+              "热搜词": "脱敏示例词",
+              "商品曝光人数": "2万-3万"
+            },
+            "combinationId": "脱敏一级 / 脱敏二级::搜索榜"
+          }
+        ],
+        "failures": [
+          {
+            "combinationId": "脱敏一级 / 脱敏二级::搜索榜",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "rankingType": "搜索榜",
+            "actualPeriod": "近1天",
+            "page": 1,
+            "stage": "趋势解析",
+            "error": "无法识别趋势：脱敏未知趋势",
+            "retries": 0,
+            "at": "2026-10-11T01:10:00.000Z"
+          }
+        ],
+        "reportFiles": null
+      },
+      "expected": {
+        "trigger": "engine_result",
+        "state": "completed_with_errors",
+        "resumeCombinationIds": [],
+        "retryCombinationIds": [
+          "脱敏一级 / 脱敏二级::搜索榜"
+        ],
+        "restartPage": 1
+      }
+    },
+    {
+      "id": "all_failed",
+      "description": "两组合全部失败，无结果，旧任务仍写 completed",
+      "task": {
+        "taskId": "top200-fixture-all_failed",
+        "taskName": "2026-10-11 09:00｜总榜、搜索榜｜1个类目",
+        "createdAt": "2026-10-11T01:00:00.000Z",
+        "completedAt": "2026-10-11T01:10:00.000Z",
+        "status": "completed",
+        "parameters": {
+          "categories": [
+            {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            }
+          ],
+          "brandType": "不限",
+          "rankingTypes": [
+            "总榜",
+            "搜索榜"
+          ],
+          "periodPolicy": "实时优先，否则近1天",
+          "rankLimit": 200
+        },
+        "stats": {
+          "totalCombinations": 2,
+          "completedCombinations": 0,
+          "scanned": 0,
+          "up": 0,
+          "first": 0,
+          "excluded": 0,
+          "unparseable": 0,
+          "duplicates": 0
+        },
+        "current": null,
+        "combinations": [
+          {
+            "id": "脱敏一级 / 脱敏二级::总榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "总榜",
+            "status": "failed",
+            "scanned": 0,
+            "saved": 0,
+            "attempts": 3,
+            "error": "脱敏模拟：页面区域不可用"
+          },
+          {
+            "id": "脱敏一级 / 脱敏二级::搜索榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "搜索榜",
+            "status": "failed",
+            "scanned": 0,
+            "saved": 0,
+            "attempts": 3,
+            "error": "脱敏模拟：页面区域不可用"
+          }
+        ],
+        "results": [],
+        "failures": [
+          {
+            "combinationId": "脱敏一级 / 脱敏二级::总榜",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "rankingType": "总榜",
+            "actualPeriod": "",
+            "page": 1,
+            "stage": "组合采集",
+            "error": "脱敏模拟：页面区域不可用",
+            "retries": 2,
+            "at": "2026-10-11T01:10:00.000Z"
+          },
+          {
+            "combinationId": "脱敏一级 / 脱敏二级::搜索榜",
+            "categoryPath": "脱敏一级 / 脱敏二级",
+            "rankingType": "搜索榜",
+            "actualPeriod": "",
+            "page": 1,
+            "stage": "组合采集",
+            "error": "脱敏模拟：页面区域不可用",
+            "retries": 2,
+            "at": "2026-10-11T01:10:00.000Z"
+          }
+        ],
+        "reportFiles": null
+      },
+      "expected": {
+        "trigger": "engine_result",
+        "state": "failed",
+        "resumeCombinationIds": [
+          "脱敏一级 / 脱敏二级::总榜",
+          "脱敏一级 / 脱敏二级::搜索榜"
+        ],
+        "retryCombinationIds": [
+          "脱敏一级 / 脱敏二级::总榜",
+          "脱敏一级 / 脱敏二级::搜索榜"
+        ],
+        "restartPage": 1
+      }
+    },
+    {
+      "id": "connection_failed",
+      "description": "浏览器连接在旧 try 外抛错，最后磁盘快照遗留 running",
+      "task": {
+        "taskId": "top200-fixture-connection_failed",
+        "taskName": "2026-10-11 09:00｜总榜、搜索榜｜1个类目",
+        "createdAt": "2026-10-11T01:00:00.000Z",
+        "completedAt": null,
+        "status": "running",
+        "parameters": {
+          "categories": [
+            {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            }
+          ],
+          "brandType": "不限",
+          "rankingTypes": [
+            "总榜",
+            "搜索榜"
+          ],
+          "periodPolicy": "实时优先，否则近1天",
+          "rankLimit": 200
+        },
+        "stats": {
+          "totalCombinations": 2,
+          "completedCombinations": 0,
+          "scanned": 0,
+          "up": 0,
+          "first": 0,
+          "excluded": 0,
+          "unparseable": 0,
+          "duplicates": 0
+        },
+        "current": null,
+        "combinations": [
+          {
+            "id": "脱敏一级 / 脱敏二级::总榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "总榜",
+            "status": "pending",
+            "scanned": 0,
+            "saved": 0
+          },
+          {
+            "id": "脱敏一级 / 脱敏二级::搜索榜",
+            "category": {
+              "displayPath": "脱敏一级 / 脱敏二级",
+              "segments": [
+                "脱敏一级",
+                "脱敏二级"
+              ]
+            },
+            "rankingType": "搜索榜",
+            "status": "pending",
+            "scanned": 0,
+            "saved": 0
+          }
+        ],
+        "results": [],
+        "failures": [],
+        "reportFiles": null
+      },
+      "observedError": {
+        "code": "BROWSER_DISCONNECTED",
+        "message": "脱敏模拟：受管浏览器连接已断开"
+      },
+      "expected": {
+        "trigger": "connection_error",
+        "state": "failed",
+        "resumeCombinationIds": [
+          "脱敏一级 / 脱敏二级::总榜",
+          "脱敏一级 / 脱敏二级::搜索榜"
+        ],
+        "retryCombinationIds": [],
+        "restartPage": 1
+      }
+    }
+  ]
+}
