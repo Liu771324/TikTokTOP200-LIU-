@@ -28,6 +28,11 @@ function captionFingerprintForVideo(file) {
   return fs.existsSync(caption) ? captionFingerprint(fs.readFileSync(caption, 'utf8')) : null;
 }
 
+function findCaptionMatch(captionHash, dedupeIndex) {
+  if (!captionHash) return null;
+  return Object.values(dedupeIndex).find((entry) => entry.captionHash === captionHash) || null;
+}
+
 async function retryOnce(operation) {
   try { return await operation(); }
   catch {
@@ -317,11 +322,6 @@ async function prepareVideoHashIndex(task, control, fingerprinter) {
       if (removeExistingDuplicate(file, task, exactMatch, '文件哈希相同')) duplicateCount += 1;
       continue;
     }
-    const captionMatch = captionHash && findVisualMatch(null, index, captionHash);
-    if (captionMatch && removeExistingDuplicate(file, task, captionMatch.entry, '文案完全一致')) {
-      duplicateCount += 1;
-      continue;
-    }
     let fingerprint = previous?.entry.fingerprint || null;
     if (!fingerprint) {
       try { fingerprint = await fingerprinter?.fingerprintFile(file); }
@@ -332,7 +332,10 @@ async function prepareVideoHashIndex(task, control, fingerprinter) {
       duplicateCount += 1;
       continue;
     }
-    index[hash] = { path: relativePath, size: stat.size, mtimeMs: stat.mtimeMs, fingerprint, captionHash };
+    const captionMatch = findCaptionMatch(captionHash, index);
+    let indexedCaptionHash = captionHash;
+    if (captionMatch && removeDuplicateCaption(file, task, captionMatch)) indexedCaptionHash = null;
+    index[hash] = { path: relativePath, size: stat.size, mtimeMs: stat.mtimeMs, fingerprint, captionHash: indexedCaptionHash };
   }
   atomicWrite(VIDEO_HASH_INDEX, index);
   task.progress.duplicatesSkipped = (task.progress.duplicatesSkipped || 0) + duplicateCount;
@@ -356,10 +359,21 @@ function removeExistingDuplicate(file, task, retained, reason) {
   return true;
 }
 
-function findVisualMatch(fingerprint, dedupeIndex, captionHash) {
+function removeDuplicateCaption(file, task, retained) {
+  const caption = path.join(path.dirname(file), `${path.parse(file).name}.txt`);
+  if (!fs.existsSync(caption)) return true;
+  try { fs.unlinkSync(caption); }
+  catch (error) {
+    appendLog(task, `重复文案无法删除，仍保留文件：${caption}；${error.message}`);
+    return false;
+  }
+  appendLog(task, `文案完全一致，仅删除重复文案并保留不同视频：${path.relative(VIDEO_DIR, file)}；文案保留于 ${retained.path.replace(/\.mp4$/i, '.txt')}`);
+  return true;
+}
+
+function findVisualMatch(fingerprint, dedupeIndex) {
   let best = null;
   for (const entry of Object.values(dedupeIndex)) {
-    if (captionHash && entry.captionHash === captionHash) return { entry, percent: 100, reason: '文案完全一致' };
     if (!fingerprint || !entry.fingerprint) continue;
     const existingPath = entry.fingerprint && resolveVideoPath(entry.path);
     if (!existingPath || !fs.existsSync(existingPath)) continue;
@@ -395,12 +409,14 @@ function hasDirectoryContents(dirname) {
 const productNameNoise = [
   '官方旗舰店', '旗舰店', '专营店', '专卖店', '正品保证', '全国包邮', '厂家直销', '原装进口', '口岸直发',
   '小分子易吸收', '老少皆宜', '试吃一罐', '拍一发二', '买一送一', '发两瓶', '发6罐', '拍2盒送礼袋', '开盖即食',
+  '独立包装', '免煮冲泡', '免煮', '冲泡', '即食', '上班', '懒人', '营养', '早餐', '代餐',
   '流量扶持', '俄罗斯', '加拿大', '小分子', '易吸收', '试吃', '拍一发', '拍2盒', '精选', '优选', '爆款', '推荐',
   '好物', '同款', '活动', '冲饮', '进口', '流量', '口岸', '纯', '_TT', 'TT',
 ];
 
 function cleanProductName(value) {
-  let cleaned = String(value || '').normalize('NFKC');
+  let cleaned = String(value || '').normalize('NFKC')
+    .replace(/【[^】]*】|\[[^\]]*\]|（[^）]*）|\([^)]*\)/g, '');
   for (const term of productNameNoise) cleaned = cleaned.replaceAll(term, '');
   return cleaned
     .replace(/\d+(?:\.\d+)?\s*(?:kg|g|斤|两|ml|毫升|l|升|盒|瓶|罐|袋|包|件)?/gi, '')
@@ -408,27 +424,33 @@ function cleanProductName(value) {
     .toLowerCase();
 }
 
-function sharedProductName(productName, videoName) {
-  const chars = (value) => Array.from(cleanProductName(value));
-  const productChars = chars(productName);
-  const videoChars = chars(videoName);
-  let previous = new Uint16Array(videoChars.length + 1);
-  let keyword = '';
-  let keywordLength = 0;
-  for (let productIndex = 1; productIndex <= productChars.length; productIndex += 1) {
-    const current = new Uint16Array(videoChars.length + 1);
-    for (let videoIndex = 1; videoIndex <= videoChars.length; videoIndex += 1) {
-      if (productChars[productIndex - 1] !== videoChars[videoIndex - 1]) continue;
-      current[videoIndex] = previous[videoIndex - 1] + 1;
-      if (current[videoIndex] >= keywordLength) {
-        keywordLength = current[videoIndex];
-        keyword = productChars.slice(productIndex - keywordLength, productIndex).join('');
+const genericSharedNames = new Set(['早餐', '代餐', '营养', '即食', '冲泡', '食材', '干货', '推荐', '好物', '上新', '新品']);
+
+function sharedProductNameAcrossCaptions(productName, captions) {
+  const productChars = Array.from(cleanProductName(productName));
+  const cleanedCaptions = captions.map(cleanProductName).filter(Boolean);
+  if (cleanedCaptions.length >= 2) {
+    for (let length = Math.min(24, productChars.length); length >= 2; length -= 1) {
+      for (let start = 0; start + length <= productChars.length; start += 1) {
+        const candidate = productChars.slice(start, start + length).join('');
+        if (genericSharedNames.has(candidate)) continue;
+        if (cleanedCaptions.every((caption) => caption.includes(candidate))) return safePart(candidate, 24);
       }
     }
-    previous = current;
   }
-  if (keyword.length >= 2) return safePart(keyword, 24);
-  return safePart(cleanProductName(productName), 24);
+  return safePart(productChars.join(''), 24);
+}
+
+function sharedProductName(productName, videoName) {
+  const productChars = Array.from(cleanProductName(productName));
+  const video = cleanProductName(videoName);
+  for (let length = Math.min(24, productChars.length); length >= 2; length -= 1) {
+    for (let start = 0; start + length <= productChars.length; start += 1) {
+      const candidate = productChars.slice(start, start + length).join('');
+      if (!genericSharedNames.has(candidate) && video.includes(candidate)) return safePart(candidate, 24);
+    }
+  }
+  return safePart(productChars.join(''), 24);
 }
 
 function outputDirectory(task, rank, product, shortName) {
@@ -554,6 +576,39 @@ async function closePlayer(page) {
   if (await close.count()) await close.click().catch(() => {});
 }
 
+async function readNamingCaptions(page, rowIndex, limit = 4) {
+  const row = page.locator('tr.aurora-table-row, tr.ecom-table-row').nth(rowIndex);
+  const cards = row.locator('[class*=videoWrapper-]');
+  const captions = [];
+  const visibleCount = Math.min(await cards.count(), limit);
+  for (let index = 0; index < visibleCount; index += 1) {
+    const card = cards.nth(index);
+    try {
+      await card.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }));
+      await retryOnce(() => card.hover({ timeout: 3000 }));
+      await page.waitForTimeout(250);
+      const caption = await page.evaluate(() => Array.from(document.querySelectorAll('.aurora-popover, .ecom-popover'))
+        .filter((popover) => popover.offsetWidth || popover.offsetHeight || popover.getClientRects().length)
+        .map((popover) => popover.querySelector('[class*=videoName-]')?.textContent?.trim() || '').filter(Boolean).at(-1) || '');
+      if (caption) captions.push(caption);
+    } catch { /* A missing naming caption falls back to the cleaned product title. */ }
+  }
+  if (captions.length < limit) {
+    const moreCard = row.locator('[class*=moreVideo-]').first();
+    if (await moreCard.count()) {
+      try {
+        await moreCard.hover({ timeout: 3000 });
+        await page.waitForTimeout(250);
+        const extras = await page.evaluate(() => Array.from(document.querySelectorAll('.aurora-popover [class*=videoItem-], .ecom-popover [class*=videoItem-]'))
+          .filter((item) => item.offsetWidth || item.offsetHeight || item.getClientRects().length)
+          .map((item) => item.querySelector('[class*=videoName-]')?.textContent?.trim() || '').filter(Boolean));
+        captions.push(...extras.slice(0, limit - captions.length));
+      } catch { /* The visible captions are still sufficient for a safe fallback. */ }
+    }
+  }
+  return captions.slice(0, limit);
+}
+
 async function saveVideoFromCard(page, rowIndex, videoIndex, rank, product, task, dedupeIndex, fingerprinter) {
   await closePlayer(page);
   const rows = page.locator('tr.aurora-table-row, tr.ecom-table-row');
@@ -647,9 +702,9 @@ async function saveVideoFromCard(page, rowIndex, videoIndex, rank, product, task
     if (!duplicateMatch) {
       if (fingerprinter) {
         try { fingerprint = await fingerprinter.fingerprintFile(partial); }
-        catch (error) { appendLog(task, `视频视觉指纹读取失败，将按文案和文件哈希去重：第 ${rank} 名第 ${videoIndex + 1} 条；${error.message}`); }
+        catch (error) { appendLog(task, `视频视觉指纹读取失败，将仅按文件哈希去重：第 ${rank} 名第 ${videoIndex + 1} 条；${error.message}`); }
       }
-      duplicateMatch = findVisualMatch(fingerprint, dedupeIndex, captionFingerprint(caption));
+      duplicateMatch = findVisualMatch(fingerprint, dedupeIndex);
     }
     if (duplicateMatch) {
       const matchingPath = resolveVideoPath(duplicateMatch.entry.path);
@@ -666,7 +721,7 @@ async function saveVideoFromCard(page, rowIndex, videoIndex, rank, product, task
       }
       task.progress.duplicatesSkipped = (task.progress.duplicatesSkipped || 0) + 1;
       task.progress.videoFailures = Object.keys(task.checkpoint.failedVideos).length;
-      const matchDescription = duplicateMatch.reason === '文案完全一致' || duplicateMatch.reason === '文件哈希一致'
+      const matchDescription = duplicateMatch.reason === '文件哈希一致'
         ? duplicateMatch.reason : `${duplicateMatch.reason}相似 ${duplicateMatch.percent}%`;
       appendLog(task, `第 ${rank} 名第 ${videoIndex + 1} 条视频与已保存视频${matchDescription}，已跳过视频和文案：${duplicateMatch.entry.path}`);
       if (fs.existsSync(productDir) && !fs.readdirSync(productDir).length) fs.rmdirSync(productDir);
@@ -677,20 +732,30 @@ async function saveVideoFromCard(page, rowIndex, videoIndex, rank, product, task
     const relativeTarget = path.relative(VIDEO_DIR, target);
     fs.renameSync(partial, target);
     partial = '';
-    dedupeIndex[videoHash] = { path: relativeTarget, size: partialStat.size, mtimeMs: partialStat.mtimeMs, fingerprint, captionHash: captionFingerprint(caption) };
-    atomicWrite(VIDEO_HASH_INDEX, dedupeIndex);
     const output = { video: target, caption: null };
+    let indexedCaptionHash = null;
     if (caption) {
-      const textFile = path.join(productDir, `${stem}.txt`);
-      try { fs.writeFileSync(textFile, caption, { encoding: 'utf8', flag: 'wx' }); output.caption = textFile; }
-      catch (error) {
-        task.progress.captionFailures = (task.progress.captionFailures || 0) + 1;
-        appendLog(task, `第 ${rank} 名第 ${videoIndex + 1} 条文案保存失败，已保留视频：${error.message}`);
+      const currentCaptionHash = captionFingerprint(caption);
+      const captionMatch = findCaptionMatch(currentCaptionHash, dedupeIndex);
+      if (captionMatch) {
+        appendLog(task, `第 ${rank} 名第 ${videoIndex + 1} 条文案与已保存文案完全一致，仅保留不同视频；文案保留于 ${captionMatch.path.replace(/\.mp4$/i, '.txt')}`);
+      } else {
+        const textFile = path.join(productDir, `${stem}.txt`);
+        try {
+          fs.writeFileSync(textFile, caption, { encoding: 'utf8', flag: 'wx' });
+          output.caption = textFile;
+          indexedCaptionHash = currentCaptionHash;
+        } catch (error) {
+          task.progress.captionFailures = (task.progress.captionFailures || 0) + 1;
+          appendLog(task, `第 ${rank} 名第 ${videoIndex + 1} 条文案保存失败，已保留视频：${error.message}`);
+        }
       }
     } else {
       task.progress.captionFailures = (task.progress.captionFailures || 0) + 1;
       appendLog(task, `第 ${rank} 名第 ${videoIndex + 1} 条文案读取失败，已保留视频`);
     }
+    dedupeIndex[videoHash] = { path: relativeTarget, size: partialStat.size, mtimeMs: partialStat.mtimeMs, fingerprint, captionHash: indexedCaptionHash };
+    atomicWrite(VIDEO_HASH_INDEX, dedupeIndex);
     task.checkpoint.completedVideos ||= {};
     task.checkpoint.completedVideos[`${rank}:${videoIndex + 1}`] = { ...output, sha256: videoHash };
     task.checkpoint.failedVideos ||= {};
@@ -796,6 +861,12 @@ async function runTask(task, control) {
         }
         if (!task.checkpoint.eligibleRanks.includes(rank)) task.checkpoint.eligibleRanks.push(rank);
         task.progress.eligible = task.checkpoint.eligibleRanks.length;
+        if (!task.checkpoint.productShortNames[rank]) {
+          const namingCaptions = await readNamingCaptions(page, product.rowIndex, 4);
+          const shortName = sharedProductNameAcrossCaptions(product.productName, namingCaptions);
+          task.checkpoint.productShortNames[rank] = shortName;
+          appendLog(task, `第 ${rank} 名下载前已读取 ${namingCaptions.length} 条视频文案，商品文件名确定为“${shortName}”`);
+        }
         const count = product.videoCount;
         let uniqueCount = Object.entries(task.checkpoint.completedVideos).filter(([key, video]) =>
           key.startsWith(`${rank}:`) && !video.duplicateOf && video.video && fs.existsSync(video.video)).length;
@@ -838,4 +909,4 @@ async function runTask(task, control) {
   }
 }
 
-module.exports = { discoverOptions, runTask, allowedTrend, safePart, tableState, selectCategory, nextPage, saveVideoFromCard };
+module.exports = { discoverOptions, runTask, allowedTrend, safePart, tableState, selectCategory, nextPage, saveVideoFromCard, sharedProductName, sharedProductNameAcrossCaptions, findVisualMatch, findCaptionMatch };

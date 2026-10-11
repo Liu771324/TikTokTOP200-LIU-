@@ -4,7 +4,8 @@
   "private": true,
   "description": "抖音电商罗盘短视频榜本地采集工具",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test collector.test.js"
   },
   "dependencies": {
     "playwright-core": "1.58.2"
