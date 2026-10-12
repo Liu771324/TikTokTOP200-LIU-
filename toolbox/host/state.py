@@ -6,7 +6,7 @@ from .events import now
 from .paths import atomic_json
 
 TRANSITIONS = {
-    "queued": {"running", "cancelled"},
+    "queued": {"running", "cancelled", "failed"},
     "running": {"pausing", "waiting_user", "stopping", "completed", "completed_with_errors", "failed", "interrupted"},
     "pausing": {"paused", "stopping", "completed", "completed_with_errors", "failed", "interrupted"},
     "paused": {"running", "stopping", "interrupted"},

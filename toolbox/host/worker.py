@@ -7,7 +7,7 @@ import time
 from uuid import uuid4
 
 from .errors import ToolboxError
-from .processes import ProcessJob
+from .processes import start_process
 
 MAX_MESSAGE = 1024 * 1024
 
@@ -24,16 +24,8 @@ class NodeWorker:
         command = [str(node), str(entrypoint)]
         if test_adapter:
             command.append('--test-adapter')
-        self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        self.process, self._job = start_process(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-        try:
-            self._job = ProcessJob(self.process)
-        except BaseException:
-            self.process.kill()
-            self.process.wait(timeout=10)
-            for pipe in (self.process.stdin, self.process.stdout, self.process.stderr):
-                pipe.close()
-            raise
         threading.Thread(target=self._read, daemon=True).start()
         threading.Thread(target=self._logs, args=(on_log,), daemon=True).start()
         threading.Thread(target=self._watch, daemon=True).start()

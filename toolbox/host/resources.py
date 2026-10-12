@@ -19,11 +19,25 @@ class ResourceQueue:
             return {"holder": self._holder.copy() if self._holder else None,
                     "waiting": [item.copy() for item in self._pending]}
 
-    @contextmanager
-    def lease(self, owner, cancelled=lambda: False):
+    def reserve(self, owner):
         ticket = {"owner": owner, "leaseId": uuid4().hex}
         with self._condition:
             self._pending.append(ticket)
+            self._condition.notify_all()
+        return ticket
+
+    def withdraw(self, ticket):
+        with self._condition:
+            if ticket in self._pending:
+                self._pending.remove(ticket)
+                self._condition.notify_all()
+
+    @contextmanager
+    def lease(self, owner, cancelled=lambda: False, reservation=None):
+        ticket = reservation if reservation is not None else self.reserve(owner)
+        with self._condition:
+            if ticket not in self._pending or ticket['owner'] != owner:
+                raise ToolboxError('INVALID_PARAMETERS', '资源排队凭据无效。')
             try:
                 while self._holder is not None or self._pending[0] is not ticket:
                     if cancelled():

@@ -20,7 +20,7 @@ function atomicState(context, state) {
 }
 
 function createApi(context, send, pendingArtifacts, command = 'run') {
-  const control = { cancelled: false, pauseRequested: false };
+  const control = { cancelled: false, pauseRequested: false, waitingUser: false };
   let closed = false;
   const assertOpen = () => { if (closed || control.cancelled) throw new Cancelled(); };
   const api = {
@@ -42,6 +42,15 @@ function createApi(context, send, pendingArtifacts, command = 'run') {
         send('state', { state: 'running' });
       }
     },
+    async waitForUser(message) {
+      assertOpen();
+      control.waitingUser = true;
+      send('state', { state: 'waiting_user', message });
+      while (control.waitingUser && !control.cancelled) await new Promise(resolve => setTimeout(resolve, 50));
+      assertOpen();
+      send('state', { state: 'running' });
+      await api.boundary();
+    },
     async register(candidate) {
       assertOpen();
       if (!['run', 'download_item'].includes(command)) throw Object.assign(new Error('当前操作不允许登记文件。'), { code: 'UNSUPPORTED_OPERATION' });
@@ -50,6 +59,16 @@ function createApi(context, send, pendingArtifacts, command = 'run') {
         pendingArtifacts.set(candidate.candidateId, { resolve, reject });
         try { send('artifact_candidate', candidate); }
         catch (error) { pendingArtifacts.delete(candidate.candidateId); reject(error); }
+      });
+    },
+    async lookup(candidateId) {
+      assertOpen();
+      if (!context.taskId) throw new Error('此操作没有任务身份。');
+      if (pendingArtifacts.has(candidateId)) throw new Error('结果正在查询或登记。');
+      return new Promise((resolve, reject) => {
+        pendingArtifacts.set(candidateId, { resolve, reject });
+        try { send('artifact_lookup', { candidateId }); }
+        catch (error) { pendingArtifacts.delete(candidateId); reject(error); }
       });
     },
   };

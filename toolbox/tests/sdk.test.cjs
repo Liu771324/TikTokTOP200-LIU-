@@ -29,3 +29,16 @@ test('registration send failure removes pending promise', async () => {
   await assert.rejects(api.register({ candidateId: 'test' }), /pipe broken/);
   assert.equal(pending.size, 0);
 });
+
+test('waiting for login resumes only after explicit control and can be cancelled', async () => {
+  const states = [];
+  const api = createApi({}, (type, data) => states.push(data.state), new Map());
+  const waiting = api.waitForUser('请登录');
+  assert.equal(states[0], 'waiting_user');
+  api.control.waitingUser = false;
+  await waiting;
+  assert.deepEqual(states, ['waiting_user', 'running']);
+  const cancelled = api.waitForUser('请验证');
+  api.control.cancelled = true;
+  await assert.rejects(cancelled, Cancelled);
+});

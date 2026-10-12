@@ -51,7 +51,10 @@ function handle(message) {
     if (message.type === 'cancel') {
       active.api.control.cancelled = true;
       rejectPending(Object.assign(new Error('操作已停止。'), { code: 'CANCELLED' }));
-    } else active.api.control.pauseRequested = message.type === 'pause';
+    } else {
+      active.api.control.pauseRequested = message.type === 'pause';
+      if (message.type === 'resume') active.api.control.waitingUser = false;
+    }
     reply('ack', { command: message.type });
     return;
   }

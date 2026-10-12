@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>电商工具箱</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-icon">工</span>
+        <div>电商工具箱<small>日常运营 · 本地工作台</small></div>
+      </div>
+      <div class="nav-label">工具</div>
+      <nav id="tools"></nav>
+      <div class="nav-label">工作记录</div>
+      <nav id="work-nav">
+        <button data-view="tasks">任务中心</button
+        ><button data-view="storage">存储管理</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <span class="status-dot"></span
+        ><span id="browser-state">正在连接工作台</span
+        ><button id="quit" class="quiet">退出软件</button>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow" id="section-label">工作记录</div>
+          <h1 id="title">任务中心</h1>
+          <p id="subtitle">采集进度与历史结果，集中在这里。</p>
+        </div>
+        <div class="header-actions">
+          <button id="open-browser">打开平台 / 登录</button
+          ><button id="refresh" class="quiet">刷新</button>
+        </div>
+      </header>
+      <div id="notice" role="status" hidden></div>
+      <section id="content" aria-live="polite">
+        <div class="empty">
+          <h2>正在打开工作台</h2>
+          <p>请稍候。</p>
+        </div>
+      </section>
+      <footer>
+        <span>结果保存在本机，按需导出</span
+        ><span>关闭窗口后继续运行 · 托盘可恢复</span>
+      </footer>
+    </main>
+    <dialog id="dialog">
+      <div id="dialog-content"></div>
+      <div class="dialog-actions"><button id="dialog-close">关闭</button></div>
+    </dialog>
+    <script src="app.js"></script>
+  </body>
+</html>

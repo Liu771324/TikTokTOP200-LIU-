@@ -1,0 +1,147 @@
+import argparse
+import ctypes
+import json
+import os
+import threading
+from pathlib import Path
+
+from .host.application import Application, ROOT
+from .host.bridge import Bridge
+from .host.instance import SingleInstance
+from .host.paths import DataPaths
+from .host.static import StaticServer
+
+
+def webview2_available():
+    import winreg
+    key = r'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for view in (winreg.KEY_WOW64_32KEY, winreg.KEY_WOW64_64KEY):
+            try:
+                with winreg.OpenKey(hive, key, 0, winreg.KEY_READ | view) as handle:
+                    version = winreg.QueryValueEx(handle, 'pv')[0]
+                    if version and version != '0.0.0.0':
+                        return True
+            except OSError:
+                pass
+    return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description='电商工具箱')
+    parser.add_argument('--smoke', action='store_true', help='开发验证：临时数据、测试工作者并自动退出')
+    options = parser.parse_args()
+    temporary = None
+    if options.smoke:
+        import tempfile
+        temporary = tempfile.TemporaryDirectory(prefix='toolbox-desktop-smoke-')
+        paths = DataPaths(Path(temporary.name))
+    else:
+        paths = DataPaths.default()
+    instance = SingleInstance(paths.root)
+    if not instance.primary:
+        instance.close()
+        return
+    if not webview2_available():
+        ctypes.windll.user32.MessageBoxW(None, '未找到 Microsoft Edge WebView2 Runtime。请从微软官网下载并安装 WebView2 运行时后重试。', '电商工具箱', 0x10)
+        instance.close()
+        return
+    import pystray
+    import webview
+    from PIL import Image, ImageDraw
+    app = Application(paths, test_adapter=options.smoke)
+    static = StaticServer(ROOT / 'toolbox/web')
+    exiting = threading.Event()
+    smoke_errors = []
+    exit_lock = threading.Lock()
+    icon = None
+    try:
+        bridge = Bridge(app, static.url)
+        window = webview.create_window('电商工具箱', static.url, js_api=bridge, width=1280, height=820,
+                                      min_size=(1000, 640), background_color='#f2f5f8')
+        app.window = app.files.window = window
+        def show(*args):
+            window.show()
+            window.restore()
+        def close_window():
+            if exiting.is_set():
+                return True
+            window.hide()
+            return False
+        def finish_exit(confirm=True):
+            if not exit_lock.acquire(blocking=False):
+                return
+            try:
+                if confirm and not window.create_confirmation_dialog('退出工具箱', '退出会停止当前任务，保留已保存的进度与结果。确定退出？'):
+                    return
+                app.shutdown()
+                exiting.set()
+                icon.stop()
+                window.destroy()
+            except Exception as exc:
+                app.logs.write(type(exc).__name__ + ': 退出未完成，请再次尝试。', level='error')
+                show()
+                window.create_confirmation_dialog('暂时无法退出', '任务仍在保存或后台进程未能结束，请稍后再次退出。')
+            finally:
+                exit_lock.release()
+        def request_exit(*args):
+            threading.Thread(target=finish_exit, daemon=True).start()
+        app.show, app.request_exit = show, request_exit
+        window.events.closing += close_window
+        image = Image.new('RGBA', (64, 64), '#153e57')
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle((12, 21, 52, 49), radius=5, fill='#ffffff')
+        draw.rectangle((24, 13, 40, 23), outline='#ffffff', width=4)
+        draw.line((12, 32, 52, 32), fill='#2e9b83', width=4)
+        icon = pystray.Icon('ScriptAllToolbox', image, '电商工具箱', pystray.Menu(
+            pystray.MenuItem('打开工具箱', show, default=True), pystray.MenuItem('退出', request_exit)))
+        threading.Thread(target=icon.run, daemon=True).start()
+        instance.watch(show)
+        def smoke():
+            if not options.smoke:
+                return
+            try:
+                window.events.loaded.wait(15)
+                import time
+                ui_deadline = time.monotonic() + 8
+                while window.evaluate_js("document.querySelectorAll('#tools button').length") != 4 and time.monotonic() < ui_deadline:
+                    time.sleep(.05)
+                assert window.evaluate_js("document.querySelectorAll('#tools button').length") == 4
+                assert bridge.invoke('app.get_state')['ok']
+                assert not bridge.invoke('execute', {'command': 'arbitrary'})['ok']
+                close_window()
+                show()
+                duplicate = SingleInstance(paths.root)
+                assert not duplicate.primary
+                duplicate.close()
+                # Fixture task uses the same public lifecycle without platform navigation.
+                app.descriptors['top200']['requiresBrowser'] = False
+                task = app.scheduler.create('top200', {'categories': ['fixture'] * 3})
+                deadline = time.monotonic() + 8
+                while app.store.task(task['id'])['state'] != 'completed' and time.monotonic() < deadline:
+                    time.sleep(.05)
+                assert app.store.task(task['id'])['state'] == 'completed'
+                print(json.dumps({'desktopLoaded': True, 'trayCreated': icon.visible, 'singleInstance': True,
+                                  'hideRestore': True, 'bridgeWhitelist': True, 'fixtureTask': 'completed'}), flush=True)
+            except Exception as exc:
+                smoke_errors.append(exc)
+                raise
+            finally:
+                finish_exit(False)
+        webview.start(smoke, gui='edgechromium', debug=False, private_mode=False,
+                      storage_path=str(paths.resolve('webview-profile')))
+        if smoke_errors:
+            raise RuntimeError('桌面 smoke 未通过') from smoke_errors[0]
+    finally:
+        if icon:
+            icon.stop()
+        if not exiting.is_set():
+            app.shutdown()
+        static.close()
+        instance.close()
+        if temporary:
+            temporary.cleanup()
+
+
+if __name__ == '__main__':
+    main()

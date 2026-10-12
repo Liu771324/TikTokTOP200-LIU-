@@ -1,17 +1,23 @@
 # 电商工具箱公共基础
 
-这里是桌面工具箱的新实现目录。当前已实现任务数据库、受管目录、状态保存、结果登记/共享引用、删除协调、FIFO 资源锁和 Node 工作者协议；尚不能作为完整桌面应用启动。真实工具适配、浏览器和界面仍按总仓实施清单推进。
+这里是桌面工具箱的新实现目录。已实现桌面外壳、托盘、单实例、操作桥接、任务/浏览器调度、结果存储及工作者协议。四个真实工具仍在迁移，工具描述中的 available 必须在专项验收后才开启；当前可启动外壳，不代表完整业务已交付。
+
+## 开发启动
+
+总仓根目录执行 `toolbox/.venv/Scripts/python.exe -m toolbox.desktop`。依赖由 toolbox/requirements.txt 与 package-lock.json 固定；普通用户最终使用安装包，不需要运行这些命令。
+
+开发桌面验收 `toolbox/.venv/Scripts/python.exe -m toolbox.desktop --smoke` 使用独占临时目录、测试 worker，验证主界面桥接、窗口隐藏恢复、托盘、单实例及任务后自动退出。不会登录或采集真实平台。真实 Edge 空白会话可单独运行 `python -m toolbox.tests.smoke_browser`。
 
 ## 开发验证
 
 在总仓根目录、Python 3.13 与 Node 24 环境执行：
 
 ```powershell
-python -m unittest toolbox.tests.test_foundation -v
+toolbox/.venv/Scripts/python.exe -m unittest toolbox.tests.test_foundation toolbox.tests.test_runtime toolbox.tests.test_bridge_operations -v
 node --test toolbox/tests/sdk.test.cjs
 ```
 
-验证使用独占临时目录、测试 worker 和模拟视频检查器，不采集真实平台，不证明视频流有效或网站能力可用。Windows 路径边界验证会在测试临时目录创建并移除一个 junction。
+验证使用独占临时目录、测试 worker 和模拟页面，不采集真实平台。运行测试中的实际 FFmpeg 本地样本解码不证明网站下载可用。Windows 路径边界验证会在测试临时目录创建并移除一个 junction。
 
 ## 入口与边界
 

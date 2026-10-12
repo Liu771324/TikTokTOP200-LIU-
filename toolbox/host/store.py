@@ -16,6 +16,7 @@ from .events import now
 from .paths import display_filename
 from .paths import atomic_json
 from .state import ACTIVE, RECOVERABLE, TRANSITIONS
+from .fingerprints import best_match, validate_fingerprint
 
 TOOLS = {"business-center", "top200", "video-ranking", "manual-video"}
 
@@ -26,6 +27,7 @@ def file_operation(method):
         with self._lock:
             if self._transaction_depth:
                 raise ToolboxError("UNSUPPORTED_OPERATION", "文件操作不能嵌套在未提交的事务中。")
+        with self._files_lock:
             return method(self, *args, **kwargs)
     return guarded
 
@@ -56,6 +58,7 @@ class Store:
         self.paths = paths
         paths.initialize()
         self._lock = RLock()
+        self._files_lock = RLock()
         self._db = sqlite3.connect(paths.root / "toolbox.sqlite3", check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         version_table = self._db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_meta'").fetchone()
@@ -88,6 +91,9 @@ class Store:
                 source_page TEXT NOT NULL, provider_id TEXT, title TEXT NOT NULL, public_url TEXT,
                 link_kind TEXT NOT NULL, locator_json TEXT NOT NULL, captured_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS pending_task_deletions(task_id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS artifact_fingerprints(
+                artifact_id TEXT PRIMARY KEY REFERENCES artifacts(id) ON DELETE CASCADE,
+                algorithm_version INTEGER NOT NULL, fingerprint_json TEXT NOT NULL);
         """)
         if self._db.execute("SELECT version FROM schema_meta").fetchone()[0] != 1:
             self._db.close()
@@ -161,7 +167,7 @@ class Store:
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         with self._lock:
             total = self._db.execute("SELECT count(*) FROM tasks" + where, parameters).fetchone()[0]
-            rows = self._db.execute("SELECT * FROM tasks" + where + " ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
+            rows = self._db.execute("SELECT * FROM tasks" + where + " ORDER BY created_at DESC,rowid DESC LIMIT ? OFFSET ?",
                                     [*parameters, limit, offset]).fetchall()
             return {"items": [self._task(r) for r in rows], "total": total, "offset": offset}
 
@@ -211,86 +217,123 @@ class Store:
                 raise ToolboxError("ARTIFACT_MISSING", "结果文件已被移动或删除。")
             return path
 
+    def media_index(self):
+        with self._lock:
+            rows = self._db.execute('''SELECT a.id,a.sha256,a.size,a.relpath,f.fingerprint_json
+                FROM artifacts a JOIN artifact_fingerprints f ON f.artifact_id=a.id
+                WHERE a.status='ready' AND f.algorithm_version=1 ORDER BY a.rowid''').fetchall()
+        return [{'artifactId': r['id'], 'sha256': r['sha256'], 'size': r['size'],
+                 'fingerprint': json.loads(r['fingerprint_json'])}
+                for r in rows if self.paths.resolve(r['relpath']).is_file()]
+
+    def registered(self, task_id, candidate_id):
+        with self._lock:
+            row = self._db.execute('SELECT registration_json FROM task_artifacts WHERE task_id=? AND candidate_id=?',
+                                   (task_id, candidate_id)).fetchone()
+            return json.loads(row[0]) if row else None
+
     @file_operation
     def register(self, task_id, attempt, candidate, *, validate_video=None, visual_match=None):
         candidate_id = candidate.get("candidateId")
         if not isinstance(candidate_id, str) or not 1 <= len(candidate_id) <= 200:
             raise ToolboxError("INVALID_PARAMETERS", "结果候选标识无效。")
         metadata_json = encode(candidate.get("metadata", {}))
+        replace_role = candidate.get('replaceRole', False)
+        if type(replace_role) is not bool or (replace_role and candidate.get('kind') not in {'excel', 'text'}):
+            raise ToolboxError('INVALID_PARAMETERS', '仅报表和文本结果可替换同任务角色。')
+        fingerprint = candidate.get('fingerprint')
+        validate_fingerprint(fingerprint)
         display_name = display_filename(candidate.get("displayName", "结果"))
         self.task(task_id)
         old_intent = self.paths.resolve(f"tasks/{task_id}/control/register-{hashlib.sha256(candidate_id.encode()).hexdigest()}.json")
         if old_intent.exists():
             self.reconcile()
         journal = None
-        with self.transaction() as db:
+        with self._lock:
             task = self.task(task_id)
             if task["attempt"] != attempt or task["state"] not in ACTIVE:
                 raise ToolboxError("UNSUPPORTED_OPERATION", "结果不属于当前执行。")
-            existing = db.execute("SELECT registration_json FROM task_artifacts WHERE task_id=? AND candidate_id=?",
+            existing = self._db.execute("SELECT registration_json FROM task_artifacts WHERE task_id=? AND candidate_id=?",
                                   (task_id, candidate_id)).fetchone()
             if existing:
-                return json.loads(existing[0])
-            source = self.paths.resolve(candidate.get("relpath", ""))
-            staging = self.paths.resolve(f"tasks/{task_id}/staging")
-            try:
-                source.resolve().relative_to(staging.resolve())
-            except ValueError as exc:
-                raise ToolboxError("INVALID_PARAMETERS", "候选文件不属于当前任务。") from exc
-            if not source.is_file() or source.stat().st_size == 0:
-                raise ToolboxError("MEDIA_UNAVAILABLE", "结果文件为空或不存在。")
-            kind = candidate.get("kind")
-            if kind not in {"video", "excel", "text"}:
-                raise ToolboxError("INVALID_PARAMETERS", "结果类型无效。")
-            if kind == "video":
-                if validate_video is None:
-                    raise ToolboxError("MEDIA_UNAVAILABLE", "视频检查器尚未就绪。")
-                validate_video(source)
-            with source.open("rb") as stream:
-                digest = hashlib.file_digest(stream, "sha256").hexdigest()
-            match = db.execute("SELECT * FROM artifacts WHERE kind='video' AND sha256=?", (digest,)).fetchone() if kind == "video" else None
-            disposition = "exact_reuse" if match else "created"
-            match_data = {}
-            if match and (match["status"] != "ready" or not self.paths.resolve(match["relpath"]).is_file()):
-                # Keep references to missing content; a new identical candidate repairs it.
-                destination = self.paths.resolve(match["relpath"])
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                atomic_copy(source, destination)
-                db.execute("UPDATE artifacts SET status='ready',size=? WHERE id=?", (destination.stat().st_size, match["id"]))
-            if not match and kind == "video" and task["toolId"] == "video-ranking" and visual_match:
-                matched = visual_match(candidate.get("fingerprint"))
-                if matched:
-                    match = db.execute("SELECT * FROM artifacts WHERE id=? AND kind='video' AND status='ready'", (matched["artifactId"],)).fetchone()
-                    if match and self.paths.resolve(match["relpath"]).is_file():
-                        disposition = "visual_reuse"
-                        match_data = {"matchReason": matched["matchReason"], "matchPercent": matched["matchPercent"]}
-                    else:
-                        match = None
-            if match:
-                artifact_id, artifact_hash = match["id"], match["sha256"]
-            else:
-                artifact_id, artifact_hash = uuid4().hex, digest
-                suffix = {"video": ".mp4", "excel": ".xlsx", "text": ".txt"}[kind]
-                relative = f"media/{digest}.mp4" if kind == "video" else f"tasks/{task_id}/results/{artifact_id}{suffix}"
-                destination = self.paths.resolve(relative)
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                # Keep the closed staging file until the database transaction commits.
-                # The small intent lets startup reconcile a crash between file and DB writes.
-                journal = self.paths.resolve(f"tasks/{task_id}/control/register-{hashlib.sha256(candidate_id.encode()).hexdigest()}.json")
-                atomic_json(journal, {"source": candidate["relpath"], "destination": relative, "artifactId": artifact_id})
-                atomic_copy(source, destination)
+                previous = json.loads(existing[0])
+                if not replace_role or previous.get('registeredAttempt') == attempt:
+                    return previous
+        source = self.paths.resolve(candidate.get("relpath", ""))
+        staging = self.paths.resolve(f"tasks/{task_id}/staging")
+        try:
+            source.resolve().relative_to(staging.resolve())
+        except ValueError as exc:
+            raise ToolboxError("INVALID_PARAMETERS", "候选文件不属于当前任务。") from exc
+        if not source.is_file() or source.stat().st_size == 0:
+            raise ToolboxError("MEDIA_UNAVAILABLE", "结果文件为空或不存在。")
+        before = source.stat()
+        kind = candidate.get("kind")
+        if kind not in {"video", "excel", "text"}:
+            raise ToolboxError("INVALID_PARAMETERS", "结果类型无效。")
+        if kind == "video":
+            if validate_video is None:
+                raise ToolboxError("MEDIA_UNAVAILABLE", "视频检查器尚未就绪。")
+            validate_video(source)
+        with source.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if (source.stat().st_mtime_ns, source.stat().st_size) != (before.st_mtime_ns, before.st_size):
+            raise ToolboxError('MEDIA_UNAVAILABLE', '候选文件仍在变化，请等待下载结束。')
+        with self._lock:
+            match = self._db.execute("SELECT * FROM artifacts WHERE kind='video' AND sha256=?", (digest,)).fetchone() if kind == "video" else None
+        disposition = "exact_reuse" if match else "created"
+        match_data = {}
+        if not match and kind == "video" and task["toolId"] == "video-ranking":
+            matched = visual_match(fingerprint) if visual_match else best_match(fingerprint, self.media_index())
+            if matched:
+                with self._lock:
+                    match = self._db.execute("SELECT * FROM artifacts WHERE id=? AND kind='video' AND status='ready'", (matched["artifactId"],)).fetchone()
+                if match and self.paths.resolve(match["relpath"]).is_file():
+                    disposition = "visual_reuse"
+                    match_data = {"matchReason": matched["matchReason"], "matchPercent": matched["matchPercent"]}
+                else:
+                    match = None
+        artifact_id = match['id'] if match else uuid4().hex
+        artifact_hash = match['sha256'] if match else digest
+        suffix = {"video": ".mp4", "excel": ".xlsx", "text": ".txt"}[kind]
+        relative = match['relpath'] if match else f"media/{digest}.mp4" if kind == 'video' else f"tasks/{task_id}/results/{artifact_id}{suffix}"
+        destination = self.paths.resolve(relative)
+        repair = match and disposition == 'exact_reuse' and (match['status'] != 'ready' or not destination.is_file() or destination.stat().st_size != match['size'])
+        if not match or repair:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            journal = old_intent
+            atomic_json(journal, {"source": candidate["relpath"], "destination": relative, "artifactId": artifact_id})
+            atomic_copy(source, destination)
+        result = {"artifactId": artifact_id, "disposition": disposition, "candidateSha256": digest,
+                  "artifactSha256": artifact_hash, **match_data}
+        if replace_role:
+            result['registeredAttempt'] = attempt
+        with self.transaction() as db:
+            current = self.task(task_id)
+            if current['attempt'] != attempt or current['state'] not in ACTIVE:
+                raise ToolboxError('UNSUPPORTED_OPERATION', '结果不属于当前执行。')
+            if not match:
                 db.execute("INSERT INTO artifacts VALUES(?,?,?,?,?,?,?,?)",
                            (artifact_id, kind, digest, relative, destination.stat().st_size,
                             mimetypes.guess_type(destination)[0], "ready", now()))
-            result = {"artifactId": artifact_id, "disposition": disposition, "candidateSha256": digest,
-                      "artifactSha256": artifact_hash, **match_data}
+            elif repair:
+                db.execute("UPDATE artifacts SET status='ready',size=? WHERE id=?", (destination.stat().st_size, artifact_id))
+            if fingerprint and disposition != 'visual_reuse':
+                db.execute('INSERT OR REPLACE INTO artifact_fingerprints VALUES(?,?,?)', (artifact_id, 1, encode(fingerprint)))
+            if replace_role:
+                db.execute('DELETE FROM task_artifacts WHERE task_id=? AND role=? AND artifact_id IN (SELECT id FROM artifacts WHERE kind=?)',
+                           (task_id, candidate.get('role', kind), kind))
             db.execute("INSERT INTO task_artifacts VALUES(?,?,?,?,?,?,?)",
                        (task_id, artifact_id, candidate_id, candidate.get("role", kind),
                         display_name, metadata_json, encode(result)))
+            if replace_role:
+                db.execute("UPDATE artifacts SET status='delete_pending' WHERE NOT EXISTS(SELECT 1 FROM task_artifacts r WHERE r.artifact_id=artifacts.id)")
         # Never remove a candidate before its registration transaction is durable.
         source.unlink(missing_ok=True)
         if journal:
             journal.unlink(missing_ok=True)
+        if replace_role:
+            self.finish_deletions()
         return result
 
     def preview_delete(self, task_ids):

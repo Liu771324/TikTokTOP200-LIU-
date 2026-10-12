@@ -1,0 +1,6 @@
+pywebview==6.2.1
+pystray==0.19.5
+Pillow==12.2.0
+requests==2.32.3
+playwright==1.58.0
+openpyxl==3.1.5

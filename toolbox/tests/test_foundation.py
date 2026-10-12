@@ -68,6 +68,71 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(ToolboxError):
             self.store.transition(task['id'], 'completed')
 
+    def test_report_replaced_on_next_attempt_without_accumulating_files(self):
+        task = self.task('top200')
+        candidate = self.candidate(task, 'report', b'first report')
+        candidate.update(kind='excel', role='report', replaceRole=True)
+        first = self.register(task, candidate)
+        old_file = self.store.artifact_path(first['artifactId'])
+        self.assertEqual(self.register(task, candidate), first)
+        self.store.transition(task['id'], 'running')
+        self.store.transition(task['id'], 'failed')
+        self.store.transition(task['id'], 'queued')
+        task = self.store.task(task['id'])
+        candidate = self.candidate(task, 'report', b'updated report')
+        candidate.update(kind='excel', role='report', replaceRole=True)
+        second = self.register(task, candidate)
+        self.assertNotEqual(first['artifactId'], second['artifactId'])
+        self.assertEqual(self.store.artifacts(task['id'])['total'], 1)
+        self.assertFalse(old_file.exists())
+        self.assertEqual(self.store.artifact_path(second['artifactId']).read_bytes(), b'updated report')
+
+    def test_fingerprint_persists_and_only_automatic_video_reuses_visually(self):
+        automatic = self.task('video-ranking')
+        fingerprint = {'duration': 20, 'frames': ['0123456789abcdef'] * 20}
+        candidate = self.candidate(automatic, content=b'first media')
+        candidate['fingerprint'] = fingerprint
+        first = self.register(automatic, candidate)
+        second_task = self.task('video-ranking')
+        candidate = self.candidate(second_task, content=b'other similar media')
+        candidate['fingerprint'] = fingerprint
+        second = self.register(second_task, candidate)
+        self.assertEqual(second['disposition'], 'visual_reuse')
+        self.assertEqual(first['artifactId'], second['artifactId'])
+        self.assertNotEqual(second['candidateSha256'], second['artifactSha256'])
+        manual = self.task()
+        candidate = self.candidate(manual, content=b'manually selected similar media')
+        candidate['fingerprint'] = fingerprint
+        self.assertEqual(self.register(manual, candidate)['disposition'], 'created')
+        self.assertEqual(len(self.store.media_index()), 2)
+
+    def test_slow_validation_does_not_block_cancel_or_register_cancelled_task(self):
+        task = self.task()
+        candidate = self.candidate(task)
+        entered, release = threading.Event(), threading.Event()
+        failures = []
+        def validate(path):
+            entered.set()
+            release.wait(3)
+        def register():
+            try:
+                self.store.register(task['id'], 1, candidate, validate_video=validate)
+            except ToolboxError as exc:
+                failures.append(exc.code)
+        thread = threading.Thread(target=register)
+        thread.start()
+        try:
+            self.assertTrue(entered.wait(2))
+            self.store.transition(task['id'], 'cancelled')
+        finally:
+            release.set()
+            thread.join(4)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(failures, ['UNSUPPORTED_OPERATION'])
+        self.assertEqual(self.store.artifacts(task['id'])['total'], 0)
+        self.store.reconcile()
+        self.assertFalse(list(self.paths.resolve('media').glob('*.mp4')))
+
     def test_shared_video_and_last_reference_deletion(self):
         first, second = self.task(), self.task()
         a = self.register(first, self.candidate(first))

@@ -154,6 +154,7 @@ details 只包含供界面使用的结构化信息，不携带 traceback、Cooki
 | Node → 宿主 | `progress` / `log` / `state` | 进度、诊断与实际执行状态 |
 | Node → 宿主 | `checkpoint` | 已原子保存状态文件，供宿主更新摘要 |
 | Node → 宿主 | `artifact_candidate` | 临时结果已关闭文件句柄，申请宿主登记 |
+| Node → 宿主 | `artifact_lookup` | 按稳定 candidateId 查询本任务已登记结果，宿主以 artifact_result 返回 registration 或 null |
 | Node → 宿主 | `result` / `error` | 操作结束或结构化错误 |
 
 接到 pause ack 只表示已收请求，直到引擎到达安全边界、保存状态并报告 paused 才能显示暂停完成。取消同理；立即退出进程只用于超时或异常回收，不当成正常完成。
@@ -179,6 +180,7 @@ interface RunContext {
   ffmpegPath: string;
   browser: null | { endpoint: string; pageId?: string; leaseId: string };
   controlRoot: string;
+  retryFailed?: boolean; // 仅控制本次执行范围；不修改任务参数
 }
 ```
 
@@ -198,6 +200,8 @@ artifact_result 明确返回 disposition（created/exact_reuse/visual_reuse）�
 
 关联记录以 taskId 和候选 ID 建唯一约束。恢复后能够从已登记关系找回 artifactId，不因 attempt 增加而再次登记同一业务结果。
 
+报表/文本候选可声明 `replaceRole: true`，同任务、同 kind、同 role 只保留当前交付文件。固定 candidateId 在同 attempt 内幂等；下一 attempt 生成新报表后先完成新文件与登记事务，再撤销旧角色引用并回收无引用文件。失败保留原报告；文件占用则保留 delete_pending 等待协调。视频不允许 replaceRole。
+
 ## 5. Python 下载核心接口
 
 ### Node 适配器实施边界（公共基础第一步）
@@ -205,6 +209,8 @@ artifact_result 明确返回 disposition（created/exact_reuse/visual_reuse）�
 适配器以 CommonJS 导出 `descriptor` 与已实现的方法；worker 仅加载工具 ID 白名单中的模块，不接受界面指定模块路径。方法签名为 `async run(parameters, context, api)`、`discover(parameters, context, api)`、`capture_page(parameters, context, api)`、`download_item(parameters, context, api)`、`read_results(parameters, context, api)`。未实现的方法返回 UNSUPPORTED_OPERATION。
 
 `api.emit(type, data)` 发送带任务/操作身份的事件；`api.checkpoint(state)` 原子写入唯一状态 envelope 后报告 checkpoint；`api.boundary()` 在安全边界处理暂停/取消；`api.register(candidate)` 等待宿主登记并返回 artifact_result。业务代码不得用 console.log 输出协议外数据。控制对象提供 `cancelled`、`pauseRequested`；适配器必须在本单元完成保存后调用 boundary。read_results 不使用 checkpoint 或 register。
+
+`api.waitForUser(message)` 报告 waiting_user 并等待显式 resume/cancel，浏览器 lease 由宿主保留。`api.lookup(candidateId)` 返回 `{candidateId, registration}`，用于登记成功但尚未 checkpoint 的恢复接缝；registration 为 null 表示未登记。视觉指纹存入宿主 artifact_fingerprints，algorithm_version=1，沿用每秒采样、64 位 dHash、序列距离12、开头5帧距离16、80%匹配规则；首选最高分，同分保持先登记者。业务适配器提交候选指纹，宿主完成共享查询，无需把全量索引塞进 RunContext。
 
 候选 `relpath` 相对 dataRoot，必须位于当前任务 artifactStagingRoot；包含 candidateId、kind、role、displayName、metadata。宿主负责计算 hash、移动文件和登记。worker 退出前不会自行删除已提交候选。公共基础验证期间只使用测试适配器，四个真实适配器尚未实现时保持不可用。
 
@@ -240,7 +246,7 @@ manual-video 由宿主协调器维护选中条目快照、逐条状态、attempt
 
 | 状态 | 中文 | 允许后续 |
 | --- | --- | --- |
-| queued | 排队中 | running、cancelled |
+| queued | 排队中 | running、cancelled、failed（启动环境失败） |
 | running | 执行中 | pausing、waiting_user、stopping、completed、completed_with_errors、failed、interrupted |
 | pausing | 正在暂停 | paused、stopping、completed、completed_with_errors、failed、interrupted |
 | paused | 已暂停 | running、stopping、interrupted |
@@ -259,6 +265,7 @@ manual-video 由宿主协调器维护选中条目快照、逐条状态、attempt
 - 重试和恢复增加 attempt，已登记的成功视频保留，已完成类目/组合按旧恢复规则跳过。
 - cancelled 是否可恢复由能力与实际 checkpoint 决定。不可恢复时界面提供以相同条件创建新任务。
 - 启动恢复把上次 running/pausing/paused/waiting_user/stopping 归为 interrupted，保留最后检查点与原因；不自动执行。
+- 上次尚未执行的 queued 按创建顺序重新入队；当前版本不支持其工具时标记 failed。没有运行 handle 的 queued 仍可取消，不遗留不可操作记录。
 - 浏览器锁在暂停/等待期间保留，正常停止、失败、结束或异常回收后释放。
 
 ## 7. 持久化数据模型
@@ -273,6 +280,7 @@ SQLite schemaVersion 起始为 1。仅宿主通过数据库事务写入；启用
 | `capture_items` | id 主键；source_key 唯一、source_kind、source_page、provider_id 可空、title、public_url 可空、link_kind、locator_json、captured_at |
 | `schema_meta` | 当前 schema_version 与应用版本 |
 | `pending_task_deletions` | 已确认删除任务的 ID 与时间；保留私有目录清理意图，文件占用后重启重试 |
+| `artifact_fingerprints` | artifact_id 外键并随资产级联删除；algorithm_version、fingerprint_json；仅宿主写共享索引 |
 
 任务配置包含人工选中条目的固定快照。删除或更新待选列表不影响已经创建的任务。视频标题、商品分组及配套文案保存在任务引用元数据中，不依赖共享视频文件名。
 

@@ -23,8 +23,8 @@
 | --- | --- | --- | --- |
 | 00 | 文档设计基线 | 已编写，见本轮文档检查记录 | 范围、接口、步骤、验收相互一致 |
 | 01 | 基线与真实页面可行性 | 进行中：状态与纯函数 fixture 已落盘，真实页面待完成 | 回归基线记录；罗盘人工读取证据；可选页面支持结论 |
-| 02 | 桌面与进程通信 | 进行中：协议工作者已实现，桌面待完成 | 单实例、窗口/托盘、桥接、工作者控制可验证 |
-| 03 | 存储、任务与浏览器 | 进行中：存储/状态/引用/FIFO 已实现，调度及浏览器待完成 | 恢复、队列、结果登记、引用删除通过公共测试 |
+| 02 | 桌面与进程通信 | 进行中：桌面外壳/托盘/桥接/协议已实现，完整退出及安装验收继续补充 | 单实例、窗口/托盘、桥接、工作者控制可验证 |
+| 03 | 存储、任务与浏览器 | 进行中：调度/浏览器/共享索引/报告替换已实现；公网协调待接入 | 恢复、队列、结果登记、引用删除通过公共测试 |
 | 04 | 商机中心 | 未开始 | 结果回归及历史 Excel 独立性通过 |
 | 05 | TOP200 | 未开始 | 榜单规则、Excel 结构及恢复通过 |
 | 06 | 自动短视频 | 未开始 | 视频/文案、恢复、去重引用通过 |
@@ -328,3 +328,14 @@ npm --prefix "Tiktok video" test
 - 输出/scratch/FFmpeg由DownloadContext注入，取消为独立DownloadCancelled；Popen隐藏且取消/超时回收；本次创建的part独占预留、最终发布不覆盖现有文件，只清理本次持有的路径；网络异常外部边界脱敏。浏览器优先、requests fallback顺序保持。
 - 视频专项执行 `python -B -m unittest -v test_downloader_core`，正常提权审批后26/26通过、0失败、0.782 s；覆盖本地HTTP、截断/空响应、超时、取消、重名/并发、FFmpeg mock失败/回收、旧GUI函数绑定。最初默认沙箱临时目录WinError 5与回环WinError 10013，不计业务通过，审批后同命令验证。
 - 没有运行真实媒体、GUI五行交互或真实浏览器/FFmpeg；不能把本地字节fixture/mock当实际平台验收。旧媒体域名子串/DOM正则继承风险已记录，接入时按真实页面证据单独处理。
+
+### 2026-10-12：公共运行接口基线与桌面初次联调
+
+- 已实现调度器、恢复入队、共用 FIFO 的 discover/capture 操作、只读结果分页；专用 Edge 动态端口与会话身份核对；轮转脱敏日志；FFmpeg 本地视频解码验证；Windows 进程启动先挂入 Job 再恢复主线程，退出等待所属进程数为零。
+- 接口缺口修订：报告 `replaceRole:true` 按同 attempt 幂等、下一 attempt 原子更换角色引用并清理无引用旧文件；视觉指纹 algorithm_version=1 存入 SQLite，原 dHash/LCS 参数与80%阈值保留；SDK 增加 waitForUser 与稳定候选 lookup，登记后未 checkpoint 的恢复可查已有引用。
+- 独立 Python 环境已按 requirements 安装，完整依赖实际版本记录 requirements.lock.txt；Node 24.19.0，playwright-core 1.58.2/exceljs4.4.0 及传递依赖有 package-lock。尚未打包成安装包。
+- 公共验证命令：`toolbox/.venv/Scripts/python.exe -m unittest toolbox.tests.test_foundation toolbox.tests.test_runtime toolbox.tests.test_bridge_operations -q`；54项通过，11.535s。Node SDK 5项通过，243.1793ms。含慢验证并发取消、报告重试替换、视觉与人工精确复用、条件发现FIFO、临时媒体不落库/事件、只读历史、远程页面/越权字段拒绝。
+- Edge 实测 `python -m toolbox.tests.smoke_browser`：Edge155.0.4283.45，公共 connect/selectPage(targetId)/disconnect 两次，独占临时 profile，仅about:blank；断开后原会话身份与响应保留，所属Job关闭并等待进程结束。首次三次运行临时清理遇WinError32；所属进程归零仍有缓存短暂占用，测试加入最多10秒仅清理自身临时目录的有界重试。最终退出0，实际等待0.211s。正式删除仍按delete_pending协调，不强删占用文件。
+- 桌面 `toolbox/.venv/Scripts/python.exe -m toolbox.desktop --smoke`：真实WebView2主窗口、JS桥接加载四个导航、托盘可见、程序化隐藏/恢复、同身份第二句柄拒绝及模拟任务完成，自动退出0。第一次增强JS检查发现 app.js语法错误，修复并静态检查后复跑通过；smoke线程失败现在会让主进程返回非零，不能仅凭退出码0误报通过。
+- 界面方向：冷灰底、深蓝文字、运营绿色操作；左工具导航、右条件/任务/结果，功能性状态占用条；表单保留各工具业务字段，不出现端口和文件路径输入。尚需专项参数格式接入、结果中文列、媒体分组与完整交互/高DPI验收。
+- 公共接入门槛已有可导入实现和可运行证据，可以下发限定范围的业务迁移；阶段02/03整体仍进行中，真实平台、完整人工协调、文件导出异常、干净机器安装尚未验收。当前工具 available 均为false，不能把外壳当作业务完成。
