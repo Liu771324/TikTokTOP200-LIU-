@@ -1,6 +1,6 @@
 # 本机安装、覆盖升级与卸载验收步骤
 
-这是尚未执行的开发验收步骤，不是已通过记录。应在主协调者启用四工具、提交源码并完成一次正式全量构建后执行。本机验收不能替代没有 Python/Node 的干净 Windows 10/11 验收。
+这是可重复执行的开发验收步骤。2026-10-13已执行的本机结果见[本机验收记录](../../docs/TOOLBOX_V1_LOCAL_ACCEPTANCE.md)，未覆盖场景继续保留为待验证。本机验收不能替代没有 Python/Node 的干净 Windows 10/11 验收。
 
 ## 前置条件
 
@@ -18,7 +18,7 @@
 
 ```powershell
 $releaseRoot = (Resolve-Path -LiteralPath 'D:\前端\ai\Script All\dist\release\<正式构建目录>').Path
-$manifest = Get-Content -LiteralPath (Join-Path $releaseRoot 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath (Join-Path $releaseRoot 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json -AsHashtable
 if ($manifest.sourceDirty) { throw '正式包包含未提交变更，请核对后重新完整构建。' }
 $installer = Join-Path $releaseRoot $manifest.installer.path
 if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ne $manifest.installer.sha256) {

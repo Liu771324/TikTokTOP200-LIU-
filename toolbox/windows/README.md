@@ -117,12 +117,12 @@ ISCC 使用固定 6.7.3 支持的 `/Qp`，保留进度及错误，省去逐文�
 - `PrivilegesRequired=lowest`，默认按用户安装；支持中文用户名和带空格路径。
 - 安装/卸载均检查固定 `Local\ScriptAllToolbox.InstallGuard`。工具箱运行期间要求先退出；不强杀进程，不启用自动关闭应用。
 - 保留上次程序目录；拒绝把程序安装到用户数据目录内。
-- 没有卸载数据目录的规则。卸载只移除安装程序登记的程序文件与快捷方式，保留用户任务、结果和浏览器配置。仍需真实升级/卸载验收证明。
+- 没有卸载数据目录的规则。卸载只移除安装程序登记的程序文件与快捷方式，保留用户任务、结果和浏览器配置。本机升级、卸载及再安装的数据哈希验证见[验收记录](../../docs/TOOLBOX_V1_LOCAL_ACCEPTANCE.md)。
 - 安装程序检查 HKCU/HKLM 的 32/64 位 WebView2 注册信息；已有运行时直接跳过。缺少时运行随包的微软 Evergreen bootstrapper `/silent /install`，这一步需要联网。安装后再次检查运行时，失败时给出中文错误。
 - Edge 与 WebView2 分别检查；缺少 Edge 时提供微软官方下载页。Edge 仍需在开始采集前安装。未捆绑浏览器。
 - 当前使用 Inno 内置默认向导语言；工具箱名称、提示与业务界面为中文。没有引入未随本机 Inno 发行的第三方语言文件。
 
-本机可执行验收步骤见 [ACCEPTANCE.md](ACCEPTANCE.md)，涵盖中文路径安装、运行中升级保护、同版本覆盖、卸载保留数据与再次安装识别；这些步骤尚待主协调者执行。目录保护同时在交互向导与 PrepareToInstall 检查，静默 `/DIR` 也不能指向用户数据目录。
+本机可执行验收步骤见 [ACCEPTANCE.md](ACCEPTANCE.md)，涵盖中文路径安装、运行中升级保护、同版本覆盖、卸载保留数据与再次安装识别；实际执行范围见上述验收记录。目录保护同时在交互向导与 PrepareToInstall 检查，静默 `/DIR` 也不能指向用户数据目录。manifest含npm空键，PowerShell解析须使用ConvertFrom-Json -AsHashtable。
 
 ## 许可证与发布检查
 
