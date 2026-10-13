@@ -1,6 +1,6 @@
 # 电商工具箱
 
-这里是桌面工具箱实现目录，包含桌面外壳、托盘、单实例、操作桥接、任务/浏览器调度、结果存储、工作者协议及四个业务适配器。当前交付0.1.2本机验收版，四入口已启用，支持自选数据和默认导出目录；最新验证与空间清理见[迁移实施记录](../docs/TOOLBOX_DATA_MIGRATION_PLAN.md)，此前业务验证范围见[本机验收记录](../docs/TOOLBOX_V1_LOCAL_ACCEPTANCE.md)。
+这里是桌面工具箱实现目录，包含桌面外壳、托盘、单实例、操作桥接、任务/浏览器调度、结果存储、工作者协议及四个业务适配器。当前交付0.1.3本机验收版，四入口已启用，支持自选数据和默认导出目录；存储页加载及切页保护见[修复记录](../docs/TOOLBOX_STORAGE_LOADING_FIX.md)，迁移与空间清理见[实施记录](../docs/TOOLBOX_DATA_MIGRATION_PLAN.md)，此前业务验证范围见[本机验收记录](../docs/TOOLBOX_V1_LOCAL_ACCEPTANCE.md)。
 
 普通用户见[使用说明](用户使用说明.md)；构建与安装验收见[Windows 构建说明](windows/README.md)。
 
