@@ -2,6 +2,9 @@ import argparse
 import ctypes
 import json
 import os
+import subprocess
+import sys
+import time
 import threading
 from pathlib import Path
 
@@ -10,6 +13,7 @@ from .host.bridge import Bridge
 from .host.instance import SingleInstance
 from .host.paths import DataPaths
 from .host.static import StaticServer
+from .host.processes import contain_current_process
 
 
 def webview2_available():
@@ -27,17 +31,38 @@ def webview2_available():
     return False
 
 
-def main():
+def main(acceptance_runner=None):
     parser = argparse.ArgumentParser(description='电商工具箱')
     parser.add_argument('--smoke', action='store_true', help='开发验证：临时数据、测试工作者并自动退出')
+    parser.add_argument('--smoke-data-root', help=argparse.SUPPRESS)
+    parser.add_argument('--acceptance', action='store_true', help='源码开发验收：临时开放真实工具，使用正式用户数据')
     options = parser.parse_args()
-    temporary = None
-    if options.smoke:
+    if acceptance_runner and (not options.acceptance or getattr(sys, 'frozen', False)):
+        parser.error('验收回调仅可用于源码 --acceptance')
+    if options.acceptance and (options.smoke or getattr(sys, 'frozen', False)):
+        parser.error('--acceptance 只用于源码真实验收，不能与smoke或冻结发布版一起使用')
+    if options.smoke_data_root and not options.smoke:
+        parser.error('--smoke-data-root 只可用于开发 smoke 子进程')
+    if options.smoke and not options.smoke_data_root:
         import tempfile
         temporary = tempfile.TemporaryDirectory(prefix='toolbox-desktop-smoke-')
-        paths = DataPaths(Path(temporary.name))
-    else:
-        paths = DataPaths.default()
+        try:
+            command = [sys.executable] if getattr(sys, 'frozen', False) else [sys.executable, '-m', 'toolbox.desktop']
+            result = subprocess.run([*command, '--smoke', '--smoke-data-root', temporary.name], timeout=60)
+        finally:
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    temporary.cleanup()
+                    break
+                except PermissionError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(.05)
+        if result.returncode:
+            raise SystemExit(result.returncode)
+        return
+    paths = DataPaths(Path(options.smoke_data_root)) if options.smoke else DataPaths.default()
     instance = SingleInstance(paths.root)
     if not instance.primary:
         instance.close()
@@ -49,7 +74,9 @@ def main():
     import pystray
     import webview
     from PIL import Image, ImageDraw
-    app = Application(paths, test_adapter=options.smoke)
+    contain_current_process()
+    fixture_smoke = options.smoke and not getattr(sys, 'frozen', False)
+    app = Application(paths, test_adapter=fixture_smoke, acceptance=options.acceptance)
     static = StaticServer(ROOT / 'toolbox/web')
     exiting = threading.Event()
     smoke_errors = []
@@ -99,6 +126,9 @@ def main():
         instance.watch(show)
         def smoke():
             if not options.smoke:
+                if acceptance_runner:
+                    window.events.loaded.wait(15)
+                    acceptance_runner(app, bridge, window, lambda: finish_exit(False))
                 return
             try:
                 window.events.loaded.wait(15)
@@ -114,15 +144,25 @@ def main():
                 duplicate = SingleInstance(paths.root)
                 assert not duplicate.primary
                 duplicate.close()
+                duplicate_command = [sys.executable] if getattr(sys, 'frozen', False) else [sys.executable, '-m', 'toolbox.desktop']
+                second = subprocess.run([*duplicate_command, '--smoke', '--smoke-data-root', str(paths.root)], timeout=8)
+                assert second.returncode == 0
                 # Fixture task uses the same public lifecycle without platform navigation.
-                app.descriptors['top200']['requiresBrowser'] = False
-                task = app.scheduler.create('top200', {'categories': ['fixture'] * 3})
-                deadline = time.monotonic() + 8
-                while app.store.task(task['id'])['state'] != 'completed' and time.monotonic() < deadline:
-                    time.sleep(.05)
-                assert app.store.task(task['id'])['state'] == 'completed'
+                if fixture_smoke:
+                    app.descriptors['top200']['requiresBrowser'] = False
+                    task = app.scheduler.create('top200', {'categories': ['fixture'] * 3})
+                    deadline = time.monotonic() + 8
+                    while app.store.task(task['id'])['state'] != 'completed' and time.monotonic() < deadline:
+                        time.sleep(.05)
+                    assert app.store.task(task['id'])['state'] == 'completed'
+                else:
+                    # Frozen smoke checks the production worker without shipping fixtures.
+                    from .host.worker import NodeWorker
+                    with NodeWorker(ROOT / 'toolbox/runtime/node.exe', ROOT / 'toolbox/node/worker.cjs'):
+                        pass
                 print(json.dumps({'desktopLoaded': True, 'trayCreated': icon.visible, 'singleInstance': True,
-                                  'hideRestore': True, 'bridgeWhitelist': True, 'fixtureTask': 'completed'}), flush=True)
+                                  'hideRestore': True, 'bridgeWhitelist': True, 'worker': 'ready',
+                                  'fixtureTask': 'completed' if fixture_smoke else 'not included'}), flush=True)
             except Exception as exc:
                 smoke_errors.append(exc)
                 raise
@@ -139,8 +179,6 @@ def main():
             app.shutdown()
         static.close()
         instance.close()
-        if temporary:
-            temporary.cleanup()
 
 
 if __name__ == '__main__':

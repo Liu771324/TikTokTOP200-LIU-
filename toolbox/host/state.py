@@ -8,7 +8,7 @@ from .paths import atomic_json
 TRANSITIONS = {
     "queued": {"running", "cancelled", "failed"},
     "running": {"pausing", "waiting_user", "stopping", "completed", "completed_with_errors", "failed", "interrupted"},
-    "pausing": {"paused", "stopping", "completed", "completed_with_errors", "failed", "interrupted"},
+    "pausing": {"paused", "waiting_user", "stopping", "completed", "completed_with_errors", "failed", "interrupted"},
     "paused": {"running", "stopping", "interrupted"},
     "waiting_user": {"running", "stopping", "interrupted"},
     "stopping": {"cancelled", "failed", "interrupted"},

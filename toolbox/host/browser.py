@@ -85,7 +85,7 @@ class BrowserManager:
                     self.close()
             executable = find_edge()
             if executable is None:
-                raise ToolboxError('EDGE_NOT_FOUND', '未找到 Microsoft Edge，请先安装 Edge。')
+                raise ToolboxError('EDGE_NOT_FOUND', '未找到 Microsoft Edge，请通过微软官网 https://www.microsoft.com/edge 安装后重试。')
             profile = self.paths.resolve('browser-profile')
             profile.mkdir(parents=True, exist_ok=True)
             active_port = self.paths.resolve('browser-profile/DevToolsActivePort')

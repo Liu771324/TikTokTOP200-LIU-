@@ -5,6 +5,56 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { normalizeCategory } = require('./category_discovery');
 
+function createTaskState(parameters, { taskId: suppliedId, now = new Date() } = {}) {
+  const categories = parameters.categories.map(normalizeCategory).filter(Boolean);
+  const stamp = now.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+  const taskId = suppliedId || `business-${stamp}-${crypto.randomUUID().slice(0, 8)}`;
+  const combinations = categories.map((category, index) => ({
+    id: crypto.createHash('sha1').update(category.displayPath).digest('hex').slice(0, 16),
+    index,
+    category,
+    status: 'pending',
+    currentPage: 0,
+    qualifyingCount: 0,
+    resultCount: 0,
+    failureCount: 0,
+    coverageComplete: false,
+    error: null,
+  }));
+  const task = {
+    taskId,
+    taskName: `${now.toLocaleString('zh-CN', { hour12: false })}｜${categories.length}个类目｜成交增长`,
+    status: 'pending',
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    startedAt: null,
+    completedAt: null,
+    parameters: {
+      categories,
+      minSales: parameters.minSales,
+      maxSales: parameters.maxSales,
+      only30dGrowth: parameters.only30dGrowth === true,
+    },
+    combinations,
+    current: null,
+    results: [],
+    failures: [],
+    unparseableItems: [],
+    stats: {
+      totalCategories: combinations.length,
+      completedCategories: 0,
+      qualifyingCount: 0,
+      saved: 0,
+      failed: 0,
+    },
+    reportFiles: null,
+    lastError: null,
+  };
+  return task;
+}
+
+
+
 function createTaskStore(rootDir = __dirname) {
   const TASK_DIR = path.join(rootDir, 'data', 'tasks');
   const CHECKPOINT_DIR = path.join(rootDir, 'data', 'checkpoints');
@@ -47,52 +97,7 @@ function createTaskStore(rootDir = __dirname) {
   }
 
   function createTask(parameters) {
-    const now = new Date();
-    const categories = parameters.categories.map(normalizeCategory).filter(Boolean);
-    const stamp = now.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
-    const taskId = `business-${stamp}-${crypto.randomUUID().slice(0, 8)}`;
-    const combinations = categories.map((category, index) => ({
-      id: crypto.createHash('sha1').update(category.displayPath).digest('hex').slice(0, 16),
-      index,
-      category,
-      status: 'pending',
-      currentPage: 0,
-      qualifyingCount: 0,
-      resultCount: 0,
-      failureCount: 0,
-      coverageComplete: false,
-      error: null,
-    }));
-    const task = {
-      taskId,
-      taskName: `${now.toLocaleString('zh-CN', { hour12: false })}｜${categories.length}个类目｜成交增长`,
-      status: 'pending',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      startedAt: null,
-      completedAt: null,
-      parameters: {
-        categories,
-        minSales: parameters.minSales,
-        maxSales: parameters.maxSales,
-        only30dGrowth: parameters.only30dGrowth === true,
-      },
-      combinations,
-      current: null,
-      results: [],
-      failures: [],
-      unparseableItems: [],
-      stats: {
-        totalCategories: combinations.length,
-        completedCategories: 0,
-        qualifyingCount: 0,
-        saved: 0,
-        failed: 0,
-      },
-      reportFiles: null,
-      lastError: null,
-    };
-    return saveTask(task);
+    return saveTask(createTaskState(parameters));
   }
 
   function prepareTask(task, { mode = 'resume' } = {}) {
@@ -137,6 +142,14 @@ function createTaskStore(rootDir = __dirname) {
   };
 }
 
-const defaultStore = createTaskStore(__dirname);
-
-module.exports = { createTaskStore, ...defaultStore };
+let defaultStore;
+function legacyStore() {
+  return defaultStore ||= createTaskStore(__dirname);
+}
+module.exports = { createTaskState, createTaskStore };
+for (const name of ['atomicWriteJson', 'checkpointPath', 'createTask', 'listTasks', 'loadTask', 'prepareTask', 'recoverInterruptedTasks', 'saveTask', 'taskPath']) {
+  module.exports[name] = (...args) => legacyStore()[name](...args);
+}
+for (const name of ['TASK_DIR', 'CHECKPOINT_DIR']) {
+  Object.defineProperty(module.exports, name, { enumerable: true, get: () => legacyStore()[name] });
+}

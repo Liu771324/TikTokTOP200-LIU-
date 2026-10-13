@@ -1,6 +1,6 @@
 // 采集器重试与分页状态确认。保持为无浏览器依赖的小模块，便于单元测试。
 
-async function runAttempts({ attempts = 3, operation, onRetry = async () => {} }) {
+async function runAttempts({ attempts = 3, operation, onRetry = async () => {}, shouldRetry = () => true }) {
   let lastResult = { ok: false, reason: '未知错误' };
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -8,6 +8,7 @@ async function runAttempts({ attempts = 3, operation, onRetry = async () => {} }
     try {
       result = await operation(attempt);
     } catch (error) {
+      if (!shouldRetry(error)) throw error;
       result = { ok: false, reason: `页面操作异常：${error.message}` };
     }
 

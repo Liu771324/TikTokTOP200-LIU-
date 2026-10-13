@@ -44,6 +44,8 @@ function createApi(context, send, pendingArtifacts, command = 'run') {
     },
     async waitForUser(message) {
       assertOpen();
+      if (!['run', 'download_item'].includes(command)) throw Object.assign(new Error('短操作不能等待人工继续，请完成登录后重新读取。'), { code: 'UNSUPPORTED_OPERATION' });
+      await api.boundary();
       control.waitingUser = true;
       send('state', { state: 'waiting_user', message });
       while (control.waitingUser && !control.cancelled) await new Promise(resolve => setTimeout(resolve, 50));
@@ -68,6 +70,25 @@ function createApi(context, send, pendingArtifacts, command = 'run') {
       return new Promise((resolve, reject) => {
         pendingArtifacts.set(candidateId, { resolve, reject });
         try { send('artifact_lookup', { candidateId }); }
+        catch (error) { pendingArtifacts.delete(candidateId); reject(error); }
+      });
+    },
+    async updateMetadata(candidateId, metadata) {
+      assertOpen();
+      if (!['run', 'download_item'].includes(command) || !context.taskId) {
+        throw Object.assign(new Error('当前操作不允许更新任务结果。'), { code: 'UNSUPPORTED_OPERATION' });
+      }
+      if (typeof candidateId !== 'string' || !candidateId || candidateId.length > 200
+          || !metadata || typeof metadata !== 'object' || Array.isArray(metadata)
+          || !Object.keys(metadata).length || Object.keys(metadata).some(key => !['title', 'caption'].includes(key))
+          || Object.entries(metadata).some(([key, value]) => typeof value !== 'string' || !value.trim()
+            || [...value].length > (key === 'title' ? 2000 : 20000))) {
+        throw Object.assign(new Error('视频标题或文案格式无效。'), { code: 'INVALID_PARAMETERS' });
+      }
+      if (pendingArtifacts.has(candidateId)) throw new Error('结果正在查询或登记。');
+      return new Promise((resolve, reject) => {
+        pendingArtifacts.set(candidateId, { resolve, reject });
+        try { send('artifact_metadata', { candidateId, metadata }); }
         catch (error) { pendingArtifacts.delete(candidateId); reject(error); }
       });
     },

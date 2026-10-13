@@ -4,14 +4,31 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
-const { connectTargetPage } = require('./edge');
-const { createVideoFingerprinter, visualOverlapPercent, openingSubjectOverlapPercent } = require('./video-fingerprint');
-const { ROOT, VIDEO_DIR, atomicWrite, saveTask, appendLog } = require('./task-store');
+const legacyEdge = require('./edge');
+const fingerprintModule = require('./video-fingerprint');
+const { visualOverlapPercent, openingSubjectOverlapPercent } = fingerprintModule;
+const legacyStore = require('./task-store');
 
+function createCollector(runtime = {}) {
+const { ROOT, VIDEO_DIR } = legacyStore;
+const atomicWrite = runtime.atomicWrite || legacyStore.atomicWrite;
+const saveTask = runtime.saveTask || legacyStore.saveTask;
+const appendLog = runtime.appendLog || legacyStore.appendLog;
+const connectTargetPage = runtime.connectTargetPage || legacyEdge.connectTargetPage;
+const createVideoFingerprinter = runtime.createVideoFingerprinter || fingerprintModule.createVideoFingerprinter;
+const checkCancelled = () => { if (runtime.isCancelled?.()) throw Object.assign(new Error('操作已停止。'), { code: 'CANCELLED' }); };
+
+
+const applyOptions = runtime.applyOptions || defaultApplyOptions;
+const ensureVideoRanking = runtime.ensureVideoRanking || defaultEnsureVideoRanking;
+const tableState = runtime.tableState || defaultTableState;
+const nextPage = runtime.nextPage || defaultNextPage;
+const readNamingCaptions = runtime.readNamingCaptions || defaultReadNamingCaptions;
+const blockingIssue = runtime.blockingIssue || defaultBlockingIssue;
 const PERIODS = new Map([['实时', 'realTime'], ['近1天', 'one'], ['近7天', 'seven'], ['近30天', 'thirty']]);
 const BRANDS = ['不限', '知名品牌', '非知名品牌'];
 const VIDEO_HASH_INDEX = path.join(ROOT, 'data', 'video-hashes.json');
-const MEDIA_CHUNK_BINDING = '__videoCollectorWriteMediaChunk';
+const MEDIA_CHUNK_BINDING = `__videoCollectorWriteMediaChunk_${crypto.randomUUID().replace(/-/g, '')}`;
 const mediaChunkWriters = new Map();
 const mediaChunkPages = new WeakSet();
 
@@ -35,7 +52,9 @@ function findCaptionMatch(captionHash, dedupeIndex) {
 
 async function retryOnce(operation) {
   try { return await operation(); }
-  catch {
+  catch (error) {
+    if (error.code === 'CANCELLED') throw error;
+    checkCancelled();
     await pause(600);
     return operation();
   }
@@ -113,6 +132,7 @@ async function discoverCategories(page, log = () => {}) {
 
 async function discoverOptions(log = () => {}) {
   const { page } = await connectTargetPage();
+  await ensureVideoRanking(page);
   const original = await readPageOptions(page);
   let categories;
   try { categories = await discoverCategories(page, log); }
@@ -140,7 +160,30 @@ async function selectCategory(page, value) {
   if (selected !== value && selected !== `${value} / 全部`) throw new Error(`行业类目切换未生效：${selected}`);
 }
 
-async function applyOptions(page, parameters) {
+async function defaultEnsureVideoRanking(page) {
+  checkCancelled();
+  const tab = page.getByRole('tab', { name: '短视频榜', exact: true });
+  await tab.waitFor({ state: 'visible', timeout: 15000 });
+  checkCancelled();
+  if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
+  await page.waitForFunction(() => {
+    const visible = (item) => Boolean(item && (item.offsetWidth || item.offsetHeight || item.getClientRects().length));
+    const selected = Array.from(document.querySelectorAll('[role="tab"][aria-selected="true"]'))
+      .some((item) => visible(item) && (item.innerText || item.textContent || '').trim() === '短视频榜');
+    const table = Array.from(document.querySelectorAll('table')).some((item) => visible(item)
+      && (item.querySelector('thead')?.innerText || '').includes('带货短视频'));
+    return selected && table;
+  }, undefined, { timeout: 20000 });
+  checkCancelled();
+  if (await tab.getAttribute('aria-selected') !== 'true') throw new Error('短视频榜未成功激活');
+  const state = await waitForStableTable(page);
+  checkCancelled();
+  if (!state.hasVideoTable) throw new Error('短视频榜表格没有加载');
+  return state;
+}
+
+async function defaultApplyOptions(page, parameters) {
+  await ensureVideoRanking(page);
   await selectCategory(page, parameters.category);
 
   const brandLabel = page.locator('label[title="品牌类型"]');
@@ -164,7 +207,7 @@ async function applyOptions(page, parameters) {
   return state;
 }
 
-async function tableState(page) {
+async function defaultTableState(page) {
   return page.evaluate(() => {
     const rows = Array.from(document.querySelectorAll('tr.aurora-table-row, tr.ecom-table-row'))
       .filter((row) => row.offsetWidth || row.offsetHeight || row.getClientRects().length);
@@ -200,7 +243,7 @@ async function tableState(page) {
   });
 }
 
-async function blockingIssue(page) {
+async function defaultBlockingIssue(page) {
   return page.evaluate(() => {
     if (!location.pathname.includes('/shop/chance/merchandise-product-rank')) return '罗盘页面已离开短视频榜，可能需要重新登录';
     const visible = (item) => item.offsetWidth || item.offsetHeight || item.getClientRects().length;
@@ -236,7 +279,7 @@ async function waitForStableTable(page, minimumWait = 1500) {
   throw new Error('榜单表格未在限定时间内稳定');
 }
 
-async function nextPage(page, current) {
+async function defaultNextPage(page, current) {
   const next = page.locator('.aurora-pagination-next:not(.aurora-pagination-disabled), .ecom-pagination-next:not(.ecom-pagination-disabled)').first();
   if (!(await next.count())) return false;
   await next.click();
@@ -499,9 +542,14 @@ async function downloadMedia(page, url, destination, expectedType) {
   const address = new URL(url);
   if (address.protocol !== 'https:') throw new Error('播放器返回非 HTTPS 媒体地址');
   return retryOnce(async () => {
+    checkCancelled();
     const transferId = crypto.randomUUID();
     let descriptor = null;
     let bytesWritten = 0;
+    let created = false;
+    const cancelTimer = runtime.isCancelled ? setInterval(() => {
+      if (runtime.isCancelled()) page.evaluate((id) => window.__collectorTransfers?.get(id)?.abort(), transferId).catch(() => {});
+    }, 100) : null;
     try {
       if (!mediaChunkPages.has(page)) {
         await page.exposeBinding(MEDIA_CHUNK_BINDING, async (_source, id, encoded) => {
@@ -512,15 +560,21 @@ async function downloadMedia(page, url, destination, expectedType) {
         mediaChunkPages.add(page);
       }
       mediaChunkWriters.set(transferId, async (encoded) => {
+        checkCancelled();
         const chunk = Buffer.from(encoded, 'base64');
-        if (descriptor === null) descriptor = fs.openSync(destination, 'wx');
+        if (descriptor === null) { descriptor = fs.openSync(destination, 'wx'); created = true; }
         let offset = 0;
         while (offset < chunk.length) offset += fs.writeSync(descriptor, chunk, offset, chunk.length - offset);
         bytesWritten += chunk.length;
       });
       const mime = await page.evaluate(async ({ mediaUrl, mediaType, binding, transferId }) => {
+        window.__collectorTransfers ||= new Map();
+        const controller = new AbortController();
+        window.__collectorTransfers.set(transferId, controller);
+        const timer = setTimeout(() => controller.abort(), 120000);
+        try {
         let response;
-        try { response = await fetch(mediaUrl, { signal: AbortSignal.timeout(120000) }); }
+        try { response = await fetch(mediaUrl, { signal: controller.signal }); }
         catch (error) { throw new Error(`媒体请求失败：${error.message}`); }
         if (response.status !== 200 || !response.body) throw new Error(`媒体下载未返回完整文件：HTTP ${response.status}`);
         const type = (response.headers.get('content-type') || '').toLowerCase();
@@ -536,52 +590,68 @@ async function downloadMedia(page, url, destination, expectedType) {
           }
         } finally { reader.releaseLock(); }
         return type;
+        } finally { clearTimeout(timer); window.__collectorTransfers.delete(transferId); }
       }, { mediaUrl: address.href, mediaType: expectedType, binding: MEDIA_CHUNK_BINDING, transferId });
+      checkCancelled();
       if (descriptor !== null) { fs.closeSync(descriptor); descriptor = null; }
       if (!bytesWritten || !fs.statSync(destination).size) throw new Error('下载文件为空');
       return mime;
     } catch (error) {
       if (descriptor !== null) { fs.closeSync(descriptor); descriptor = null; }
-      if (fs.existsSync(destination)) fs.unlinkSync(destination);
+      if (created && fs.existsSync(destination)) fs.unlinkSync(destination);
+      checkCancelled();
       throw error;
     } finally {
+      if (cancelTimer) clearInterval(cancelTimer);
       mediaChunkWriters.delete(transferId);
     }
   });
 }
 
 async function runFfmpeg(args, destination, action) {
-  const binary = process.env.FFMPEG_PATH || 'ffmpeg';
+  checkCancelled();
+  const binary = runtime.ffmpegPath || process.env.FFMPEG_PATH || 'ffmpeg';
+  // Reserve the output exclusively before allowing FFmpeg to replace it.
+  fs.closeSync(fs.openSync(destination, 'wx'));
+  try {
   await new Promise((resolve, reject) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 120000);
-    const child = spawn(binary, ['-hide_banner', '-loglevel', 'error', '-y', ...args, '-c', 'copy', '-f', 'mp4', destination],
-      { windowsHide: true, signal: controller.signal });
-    let stderr = '';
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString().slice(0, 500); });
-    child.on('error', (error) => { clearTimeout(timer); reject(new Error(error.name === 'AbortError' ? `FFmpeg ${action}超时` : `FFmpeg 无法启动：${error.message}`)); });
+    const child = (runtime.spawn || spawn)(binary, ['-hide_banner', '-loglevel', 'error', '-y', ...args, '-c', 'copy', '-f', 'mp4', destination],
+      { windowsHide: true, signal: controller.signal, stdio: ['ignore', 'ignore', 'pipe'] });
+    let failure = null;
+    const cancelTimer = setInterval(() => {
+      if (runtime.isCancelled?.()) { failure = Object.assign(new Error('操作已停止。'), { code: 'CANCELLED' }); controller.abort(); }
+    }, 100);
+    child.stderr.resume();
+    child.on('error', (error) => { failure ||= new Error(error.name === 'AbortError' ? `FFmpeg ${action}超时` : 'FFmpeg 无法启动，请检查工具箱组件。'); });
     child.on('close', (code) => {
       clearTimeout(timer);
-      code === 0 ? resolve() : reject(new Error(`FFmpeg ${action}失败：${stderr.trim() || `退出码 ${code}`}`));
+      clearInterval(cancelTimer);
+      if (failure) reject(failure);
+      else code === 0 ? resolve() : reject(new Error(`FFmpeg ${action}失败：退出码 ${code}`));
     });
   });
   if (!fs.existsSync(destination) || !fs.statSync(destination).size) throw new Error(`FFmpeg ${action}文件为空`);
+  checkCancelled();
+  } catch (error) { fs.rmSync(destination, { force: true }); throw error; }
 }
 
 const mergeTracks = (video, audio, destination) => runFfmpeg(['-i', video, '-i', audio, '-map', '0:v:0', '-map', '1:a:0'], destination, '合并');
 const remuxVideo = (video, destination) => runFfmpeg(['-i', video], destination, '封装');
 
 async function closePlayer(page) {
-  const close = page.locator('.auxo-dorami-video-header [class*=closeIcon-]').last();
+  const close = page.locator('.auxo-dorami-video-header:visible [class*=closeIcon-], .ecom-dorami-video-header:visible [class*=closeIcon-]').last();
   if (await close.count()) await close.click().catch(() => {});
 }
 
-async function readNamingCaptions(page, rowIndex, limit = 4) {
+async function defaultReadNamingCaptions(page, rowIndex, limit = 4) {
   const row = page.locator('tr.aurora-table-row, tr.ecom-table-row').nth(rowIndex);
   const cards = row.locator('[class*=videoWrapper-]');
   const captions = [];
   const visibleCount = Math.min(await cards.count(), limit);
   for (let index = 0; index < visibleCount; index += 1) {
+    checkCancelled();
     const card = cards.nth(index);
     try {
       await card.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' }));
@@ -591,7 +661,7 @@ async function readNamingCaptions(page, rowIndex, limit = 4) {
         .filter((popover) => popover.offsetWidth || popover.offsetHeight || popover.getClientRects().length)
         .map((popover) => popover.querySelector('[class*=videoName-]')?.textContent?.trim() || '').filter(Boolean).at(-1) || '');
       if (caption) captions.push(caption);
-    } catch { /* A missing naming caption falls back to the cleaned product title. */ }
+    } catch { checkCancelled(); /* A missing naming caption falls back to the cleaned product title. */ }
   }
   if (captions.length < limit) {
     const moreCard = row.locator('[class*=moreVideo-]').first();
@@ -603,13 +673,14 @@ async function readNamingCaptions(page, rowIndex, limit = 4) {
           .filter((item) => item.offsetWidth || item.offsetHeight || item.getClientRects().length)
           .map((item) => item.querySelector('[class*=videoName-]')?.textContent?.trim() || '').filter(Boolean));
         captions.push(...extras.slice(0, limit - captions.length));
-      } catch { /* The visible captions are still sufficient for a safe fallback. */ }
+      } catch { checkCancelled(); /* The visible captions are still sufficient for a safe fallback. */ }
     }
   }
   return captions.slice(0, limit);
 }
 
 async function saveVideoFromCard(page, rowIndex, videoIndex, rank, product, task, dedupeIndex, fingerprinter) {
+  if (runtime.managed) return runtime.saveVideoFromCard(page, rowIndex, videoIndex, rank, product, task, fingerprinter);
   await closePlayer(page);
   const rows = page.locator('tr.aurora-table-row, tr.ecom-table-row');
   const row = rows.nth(rowIndex);
@@ -660,14 +731,14 @@ async function saveVideoFromCard(page, rowIndex, videoIndex, rank, product, task
     await retryOnce(() => card.click({ timeout: 3000 }));
     const playerState = await Promise.race([
       popupOpened,
-      page.waitForFunction(() => Array.from(document.querySelectorAll('.auxo-dorami-video-container'))
+      page.waitForFunction(() => Array.from(document.querySelectorAll('.auxo-dorami-video-container, .ecom-dorami-video-container'))
         .some((container) => container.getClientRects().length && Boolean(container.querySelector('video')?.currentSrc)), null, { timeout: 7000 }).then(() => 'player'),
     ]);
     page.off('popup', onPopup);
     if (playerState === 'external') throw new Error('视频未在罗盘小窗播放，已跳过新开的抖音页面');
     const player = await page.evaluate(() => {
-      const container = Array.from(document.querySelectorAll('.auxo-dorami-video-container')).filter((node) => node.offsetWidth || node.offsetHeight).at(-1);
-      return { url: container?.querySelector('video')?.currentSrc || '', caption: container?.querySelector('.auxo-dorami-video-title .auxo-dorami-atom-text')?.textContent?.trim() || '' };
+      const container = Array.from(document.querySelectorAll('.auxo-dorami-video-container, .ecom-dorami-video-container')).filter((node) => node.offsetWidth || node.offsetHeight).at(-1);
+      return { url: container?.querySelector('video')?.currentSrc || '', caption: container?.querySelector('.auxo-dorami-video-title .auxo-dorami-atom-text, .ecom-dorami-video-title .ecom-dorami-atom-text')?.textContent?.trim() || '' };
     });
     caption ||= player.caption;
     const videoUrl = player.url.startsWith('https://') ? player.url : mediaResponses.find((item) => item.type.startsWith('video/'))?.url;
@@ -823,9 +894,11 @@ async function runTask(task, control) {
     } catch (error) {
       appendLog(task, `视觉去重不可用，将仅按文件哈希去重：${error.message}`);
     }
-    const dedupeIndex = await prepareVideoHashIndex(task, control, fingerprinter);
+    const dedupeIndex = runtime.managed ? null : await prepareVideoHashIndex(task, control, fingerprinter);
     const failedRanks = Object.keys(task.checkpoint.failedVideos).map((key) => Number(key.split(':')[0])).filter(Number.isFinite);
-    const resumeFromRank = Math.min(task.checkpoint.rank || 1, ...failedRanks);
+    const repairRanks = runtime.managed ? [...task.checkpoint.trendErrors,
+      ...Object.entries(task.checkpoint.completedVideos).filter(([, video]) => !video.caption).map(([key]) => Number(key.split(':')[0]))].filter(Number.isFinite) : [];
+    const resumeFromRank = Math.min(task.checkpoint.rank || 1, ...failedRanks, ...repairRanks);
     while (state.page <= Math.ceil(maxRank / pageSize)) {
       await control.waitIfPaused();
       control.throwIfStopped();
@@ -854,6 +927,10 @@ async function runTask(task, control) {
           saveTask(task);
           continue;
         }
+        if (runtime.managed && task.checkpoint.trendErrors.includes(rank)) {
+          task.checkpoint.trendErrors = task.checkpoint.trendErrors.filter(value => value !== rank);
+          for (const error of task.errors) if (error.rank === rank && !error.videoIndex && error.message?.startsWith('无法识别趋势：')) error.resolvedAt = new Date().toISOString();
+        }
         if (!allowedTrend(product.trend, task.parameters.trendMode)) {
           task.checkpoint.rank = rank + 1;
           saveTask(task);
@@ -869,20 +946,36 @@ async function runTask(task, control) {
         }
         const count = product.videoCount;
         let uniqueCount = Object.entries(task.checkpoint.completedVideos).filter(([key, video]) =>
-          key.startsWith(`${rank}:`) && !video.duplicateOf && video.video && fs.existsSync(video.video)).length;
+          key.startsWith(`${rank}:`) && (runtime.managed ? video.disposition === 'created' && Boolean(video.artifactId) : !video.duplicateOf && video.video && fs.existsSync(video.video))).length;
         appendLog(task, `第 ${rank} 名符合条件：${product.productName}；可用视频候选 ${count} 条`);
-        for (let index = 0; index < count && uniqueCount < 4; index += 1) {
+        for (let index = 0; index < count && (runtime.managed || uniqueCount < 4); index += 1) {
           await control.waitIfPaused();
           control.throwIfStopped();
           task.progress.currentVideo = index + 1;
           task.checkpoint.videoIndex = index + 1;
           const completed = task.checkpoint.completedVideos[`${rank}:${index + 1}`];
-          if (completed && fs.existsSync(completed.video)) continue;
+          if (completed && (runtime.managed ? Boolean(completed.artifactId) : fs.existsSync(completed.video))) {
+            if (runtime.managed && !completed.caption) await runtime.repairCaptionFromCard(page, product.rowIndex, index, rank, product, task);
+            continue;
+          }
+          if (uniqueCount >= 4) continue;
           const oldUniqueCount = uniqueCount;
           await saveVideoFromCard(page, product.rowIndex, index, rank, product, task, dedupeIndex, fingerprinter);
           uniqueCount = Object.entries(task.checkpoint.completedVideos).filter(([key, video]) =>
-            key.startsWith(`${rank}:`) && !video.duplicateOf && video.video && fs.existsSync(video.video)).length;
+            key.startsWith(`${rank}:`) && (runtime.managed ? video.disposition === 'created' && Boolean(video.artifactId) : !video.duplicateOf && video.video && fs.existsSync(video.video))).length;
           if (uniqueCount < oldUniqueCount) uniqueCount = oldUniqueCount;
+        }
+        if (runtime.managed && uniqueCount >= 4) {
+          const superseded = Object.keys(task.checkpoint.failedVideos).filter(key => key.startsWith(`${rank}:`));
+          for (const key of superseded) {
+            delete task.checkpoint.failedVideos[key];
+            const videoIndex = Number(key.split(':')[1]);
+            for (const error of task.errors) if (error.rank === rank && error.videoIndex === videoIndex && !error.resolvedAt) {
+              error.resolvedAt = new Date().toISOString(); error.resolution = 'quota_satisfied';
+            }
+          }
+          task.progress.videoFailures = Object.keys(task.checkpoint.failedVideos).length;
+          if (superseded.length) appendLog(task, `第 ${rank} 名已保存 4 条新视频，${superseded.length} 条候选失败已按配额满足结束重试`);
         }
         if (uniqueCount < 2) appendLog(task, `第 ${rank} 名只有 ${uniqueCount} 条不同视频；已检查 ${count} 个候选，未找到第二条不同视频`);
         task.checkpoint.rank = rank + 1;
@@ -894,14 +987,14 @@ async function runTask(task, control) {
       state = await tableState(page);
     }
     task.progress.currentVideo = null;
-    task.status = 'completed';
+    task.status = runtime.managed && (Object.keys(task.checkpoint.failedVideos).length || task.checkpoint.trendErrors.length || task.progress.captionFailures) ? 'completed_with_errors' : 'completed';
     task.completedAt = new Date().toISOString();
     for (const error of task.errors) if (!error.rank && !error.videoIndex && !error.resolvedAt) error.resolvedAt = task.completedAt;
     appendLog(task, `扫描完成：检查 ${task.progress.scanned} 名，符合条件 ${task.progress.eligible} 件，视频成功 ${task.progress.videosSaved} 条，重复跳过 ${task.progress.duplicatesSkipped || 0} 条，失败 ${task.progress.videoFailures} 条`);
     return task;
   } catch (error) {
-    task.status = error.name === 'StopRequestedError' ? 'stopped' : 'failed';
-    if (task.status === 'failed') task.errors.push({ message: error.message, at: new Date().toISOString() });
+    task.status = error.name === 'StopRequestedError' || error.code === 'CANCELLED' ? 'stopped' : 'failed';
+    if (task.status === 'failed') task.errors.push({ message: error.message, ...(runtime.managed ? { code: error.code || 'MEDIA_UNAVAILABLE' } : {}), at: new Date().toISOString() });
     appendLog(task, `任务${task.status === 'stopped' ? '已停止' : '失败'}：${error.message}`);
     return task;
   } finally {
@@ -909,4 +1002,7 @@ async function runTask(task, control) {
   }
 }
 
-module.exports = { discoverOptions, runTask, allowedTrend, safePart, tableState, selectCategory, nextPage, saveVideoFromCard, sharedProductName, sharedProductNameAcrossCaptions, findVisualMatch, findCaptionMatch };
+return { discoverOptions, runTask, allowedTrend, safePart, tableState, readPageOptions, applyOptions, ensureVideoRanking, selectCategory, nextPage, saveVideoFromCard, sharedProductName, sharedProductNameAcrossCaptions, findVisualMatch, findCaptionMatch, downloadMedia, runFfmpeg, isMp4, productKey, blockingIssue };
+}
+
+module.exports = { createCollector, ...createCollector() };

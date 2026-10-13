@@ -53,6 +53,7 @@ class DownloadContext:
     output_directory: Path
     scratch_directory: Path
     ffmpeg_path: Path | None = None
+    process_factory: Callable | None = None
 
 
 @dataclass(frozen=True)
@@ -393,6 +394,7 @@ def mux_media(
     *,
     ffmpeg_path: Path | None = None,
     should_cancel: Callable[[], bool] = _never_cancel,
+    process_factory: Callable | None = None,
 ) -> None:
     """Mux separate video and audio tracks without re-encoding."""
     _check_cancel(should_cancel)
@@ -428,11 +430,16 @@ def mux_media(
     try:
         # A file avoids blocking on a full stderr pipe while polling cancellation.
         with tempfile.TemporaryFile(dir=output_path.parent) as stderr:
-            process = subprocess.Popen(
-                command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            options = dict(
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                 stderr=stderr,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
+            job = None
+            if process_factory is None:
+                process = subprocess.Popen(command, **options)
+            else:
+                process, job = process_factory(command, **options)
             try:
                 deadline = time.monotonic() + 180
                 while process.poll() is None:
@@ -452,6 +459,8 @@ def mux_media(
                     raise RuntimeError(f"音视频合并失败：{detail}")
             finally:
                 # Reap before closing stderr or deleting output on Windows.
+                if job is not None:
+                    job.close()
                 if process.poll() is None:
                     process.terminate()
                     try:
@@ -459,6 +468,8 @@ def mux_media(
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
+                else:
+                    process.wait()
         if not temporary_path.is_file() or temporary_path.stat().st_size == 0:
             raise RuntimeError("音视频合并结果为空")
         _publish_without_overwrite(temporary_path, output_path)
@@ -548,7 +559,8 @@ def download_one(
                                should_cancel=should_cancel)
                 report("merging")
                 mux_media(video_track_path, audio_track_path, output_path,
-                          ffmpeg_path=context.ffmpeg_path, should_cancel=should_cancel)
+                          ffmpeg_path=context.ffmpeg_path, should_cancel=should_cancel,
+                          process_factory=context.process_factory)
         else:
             download_media(video_url, final_url, output_path,
                            lambda total, written: report("downloading_video", total, written),

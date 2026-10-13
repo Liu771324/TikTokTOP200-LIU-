@@ -6,10 +6,11 @@ FIELDS = {
     'browser.get_state': set(), 'browser.open': {'source'}, 'browser.list_pages': set(), 'browser.clear_login': {'confirmed'},
     'tools.discover': {'toolId'}, 'tasks.create': {'toolId', 'parameters', 'itemIds'},
     'tasks.list': {'toolId', 'state', 'offset', 'limit'}, 'tasks.get': {'taskId'},
-    'tasks.control': {'taskId', 'command'}, 'tasks.results': {'taskId', 'offset', 'limit'},
+    'tasks.control': {'taskId', 'command'}, 'tasks.results': {'taskId', 'offset', 'limit', 'section'},
+    'tasks.artifacts': {'taskId', 'offset', 'limit'},
     'tasks.logs': {'taskId', 'afterSeq', 'limit'}, 'capture.read_page': {'pageId'}, 'capture.add_text': {'text'},
     'capture.list': {'offset', 'limit'}, 'capture.remove': {'itemIds'}, 'capture.copy': {'itemIds', 'field'},
-    'capture.export': {'itemIds'}, 'artifacts.open': {'artifactId'}, 'artifacts.export': {'artifactIds'},
+    'capture.export': {'itemIds'}, 'artifacts.open': {'artifactId'}, 'artifacts.export': {'artifactIds', 'taskId'},
     'storage.get_usage': set(), 'storage.preview_delete': {'taskIds'}, 'storage.confirm_delete': {'token'},
     'storage.clean_cache': set(),
 }
@@ -79,7 +80,10 @@ class Bridge:
         if action == 'tasks.control':
             return a.scheduler.control(p['taskId'], p['command'])
         if action == 'tasks.results':
-            return a.operations.results(p['taskId'], offset, limit)
+            return a.operations.results(p['taskId'], offset, limit, p.get('section', 'results'))
+        if action == 'tasks.artifacts':
+            a.store.task(p['taskId'])
+            return a.store.artifacts(p['taskId'], offset, limit)
         if action == 'tasks.logs':
             a.store.task(p['taskId'])
             return a.logs.read(p['taskId'], p.get('afterSeq', 0), p.get('limit', 100))
@@ -103,7 +107,7 @@ class Bridge:
         if action == 'artifacts.open':
             return a.files.open(p['artifactId'])
         if action == 'artifacts.export':
-            return a.files.export(p['artifactIds'])
+            return a.files.export(p['artifactIds'], p.get('taskId'))
         if action == 'storage.get_usage':
             return a.store.usage()
         if action == 'storage.preview_delete':
@@ -111,4 +115,6 @@ class Bridge:
         if action == 'storage.confirm_delete':
             return a.store.confirm_delete(p['token'])
         if action == 'storage.clean_cache':
-            return a.files.clean_cache(bool(a.operations._runs))
+            # Prevent create/resume/start from racing the inactive scratch snapshot.
+            with a.scheduler._lock, a.operations._lock:
+                return a.files.clean_cache(bool(a.operations._runs))

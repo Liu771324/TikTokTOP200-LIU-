@@ -68,6 +68,7 @@ class Operations:
                     raise ToolboxError('CANCELLED', '操作已停止。')
             request_id = worker.send(kind, context=context, parameters=parameters)
             deadline = time.monotonic() + (30 if kind == 'read_results' else 120)
+            categories = []
             while time.monotonic() < deadline:
                 if handle and handle['cancel'].is_set():
                     raise ToolboxError('CANCELLED', '操作已停止。')
@@ -77,8 +78,26 @@ class Operations:
                     continue
                 if message.get('requestId') != request_id:
                     continue
+                if message['type'] == 'options_chunk':
+                    data = message.get('data', {})
+                    items = data.get('items') if type(data) is dict else None
+                    if (kind != 'discover' or context['toolId'] != 'business-center'
+                            or type(data) is not dict or data.get('field') != 'categories' or type(items) is not list
+                            or not 1 <= len(items) <= 50 or len(categories) + len(items) > 10000
+                            or any(type(item) is not dict or not isinstance(item.get('displayPath'), str)
+                                   or type(item.get('segments')) is not list or not item['segments']
+                                   or type(item.get('valuePath')) is not list
+                                   or any(not isinstance(part, str) for part in item['segments'] + item['valuePath'])
+                                   for item in items)):
+                        raise ToolboxError('WORKER_PROTOCOL_ERROR', '类目分片格式无效或超过安全上限。')
+                    categories.extend(items)
                 if message['type'] == 'result':
-                    return message.get('data', {})
+                    result = message.get('data', {})
+                    if categories:
+                        if type(result) is not dict or result.get('categories') != []:
+                            raise ToolboxError('WORKER_PROTOCOL_ERROR', '类目分片结束标记无效。')
+                        result = {**result, 'categories': categories}
+                    return result
                 if message['type'] == 'error':
                     data = message.get('data', {})
                     raise ToolboxError(data.get('code', 'WORKER_EXITED'), redact(data.get('message', '读取失败。')))
@@ -86,17 +105,23 @@ class Operations:
                     self.logs.write(message.get('data', {}).get('message', ''))
             raise ToolboxError('WORKER_EXITED', '读取超时，请重新操作。', retryable=True)
 
-    def results(self, task_id, offset=0, limit=50):
+    def results(self, task_id, offset=0, limit=50, section='results'):
         from .store import page
         page(offset, limit, 200)
         task = self.store.task(task_id)
+        allowed = {'results', 'failures', 'unparseableItems'} if task['toolId'] == 'business-center' else {'results', 'failures'} if task['toolId'] == 'top200' else {'results'}
+        if section not in allowed:
+            raise ToolboxError('INVALID_PARAMETERS', '此工具不支持该结果分区。')
         state = self.store.paths.resolve(f'tasks/{task_id}/engine-state.json')
         if not state.exists():
             return {'items': [], 'total': 0}
         # No task_context(), mkdir, browser lease, or engine store construction here.
         context = {'protocolVersion': 1, 'toolId': task['toolId'], 'taskId': task_id,
                    'attempt': task['attempt'], 'dataRoot': str(self.store.paths.root), 'statePath': str(state), 'browser': None}
-        return self._call('read_results', {'offset': offset, 'limit': limit}, context)
+        parameters = {'offset': offset, 'limit': limit}
+        if section != 'results':
+            parameters['section'] = section
+        return self._call('read_results', parameters, context)
 
     def shutdown(self):
         with self._lock:

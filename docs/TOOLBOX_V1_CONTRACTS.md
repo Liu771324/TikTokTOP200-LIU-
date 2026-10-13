@@ -1,8 +1,8 @@
 # 电商工具箱第一版：接口与数据约定
 
-> 版本：0.2；日期：2026-10-11；状态：公共基础部分实现，桌面桥接与业务适配尚待实现。
+> 版本：0.3；日期：2026-10-13；状态：公共基础、桌面桥接与四工具适配已实现，验收进行中。
 >
-> 本文描述未来工具箱接口，不描述旧 HTTP 服务现有 API。以[总体设计](TOOLBOX_V1_PLAN.md)确定范围，按[实施清单](TOOLBOX_V1_EXECUTION.md)验证。
+> 本文描述工具箱实现使用的接口，不描述旧 HTTP 服务现有 API；具体通过范围以实施证据为准。以[总体设计](TOOLBOX_V1_PLAN.md)确定范围，按[实施清单](TOOLBOX_V1_EXECUTION.md)验证。
 
 ## 1. 通用约定
 
@@ -66,7 +66,8 @@ details 只包含供界面使用的结构化信息，不携带 traceback、Cooki
 | `tasks.list` | 工具/状态、offset、limit | 全量历史的分页摘要，默认每页 20，最多 100 |
 | `tasks.get` | taskId | 摘要、当前进度、能力、错误和结果索引 |
 | `tasks.control` | taskId、command | pause/resume/cancel/retry_failed；按能力与状态校验 |
-| `tasks.results` | taskId、offset、limit | 业务结果分页；默认 50，最多 200，避免把全部结果塞入事件 |
+| `tasks.results` | taskId、offset、limit、section可选 | 业务结果分页；默认50、最多200。section默认results，商机另支持failures/unparseableItems，TOP200另支持failures；不支持的分区拒绝 |
+| `tasks.artifacts` | taskId、offset、limit | 交付文件分页；默认50、最多200，含本任务的文件名、商品与文案引用 |
 | `tasks.logs` | taskId、游标、limit | 有界日志分页及已轮转提示 |
 | `capture.read_page` | pageId | 入队读取当前页，返回 operationId；完成后更新人工待选列表 |
 | `capture.add_text` | 分享文本 | 按现有规则提取、校验链接并加入待选列表 |
@@ -75,7 +76,7 @@ details 只包含供界面使用的结构化信息，不携带 traceback、Cooki
 | `capture.copy` | itemIds、字段选择 | 宿主复制标题/链接到剪贴板，返回复制数量与不可用项 |
 | `capture.export` | itemIds | 选择保存位置，导出 Excel：标题、链接、链接类型、来源、读取时间 |
 | `artifacts.open` | artifactId | 宿主核对记录及实际文件后调用系统打开 |
-| `artifacts.export` | artifactIds | 单文件保存或批量选择文件夹，返回成功、跳过、失败数量 |
+| `artifacts.export` | artifactIds、taskId可选 | 单文件保存或批量选择文件夹；taskId指定本任务的文件名/商品/文案引用；返回成功、跳过、失败数量 |
 | `storage.get_usage` | 无 | 结果、媒体、恢复数据、缓存、日志分类占用 |
 | `storage.preview_delete` | taskIds/itemIds/artifactIds | 删除摘要和确认操作 token，拒绝活动任务 |
 | `storage.confirm_delete` | token | 重新校验引用后删除，返回实际释放量与待删除项 |
@@ -152,6 +153,7 @@ details 只包含供界面使用的结构化信息，不携带 traceback、Cooki
 | 宿主 → Node | `shutdown` | 释放工作者自己的连接和资源 |
 | Node → 宿主 | `ready` / `heartbeat` / `ack` | 进程就绪、存活及命令接收 |
 | Node → 宿主 | `progress` / `log` / `state` | 进度、诊断与实际执行状态 |
+| Node → 宿主 | `options_chunk` | 仅商机中心 discover 的大类目列表分片；field 固定 categories，每片一至五十项，总数最多一万 |
 | Node → 宿主 | `checkpoint` | 已原子保存状态文件，供宿主更新摘要 |
 | Node → 宿主 | `artifact_candidate` | 临时结果已关闭文件句柄，申请宿主登记 |
 | Node → 宿主 | `artifact_lookup` | 按稳定 candidateId 查询本任务已登记结果，宿主以 artifact_result 返回 registration 或 null |
@@ -160,6 +162,8 @@ details 只包含供界面使用的结构化信息，不携带 traceback、Cooki
 接到 pause ack 只表示已收请求，直到引擎到达安全边界、保存状态并报告 paused 才能显示暂停完成。取消同理；立即退出进程只用于超时或异常回收，不当成正常完成。
 
 discover 与 capture_page 使用 operationId 和独立临时工作区，不创建伪造的正式任务。它们的上下文只包含 toolId、operationId、dataRoot、scratchRoot 与有效浏览器 lease。read_results 使用只读状态路径，任务结束后可启动短时工作者分页读取，读取完退出；不得因此初始化 store 或取得浏览器锁。
+
+商机中心 discover 的原始 JSON 超过 900 KiB 时，按原顺序通过 `options_chunk` 回传类目，每项保留 displayPath、segments、valuePath，最终 result 的 categories 为空数组。宿主只接受同一请求的商机 discover 分片，校验每片数量与累计一万项上限，收到 result 后合并为原有完整 categories 接口再交给界面；错误、取消或超时不发布部分选项。小结果保持原样，单消息 1 MiB 限制不变。
 
 ### 4.3 RunContext
 
@@ -198,6 +202,11 @@ artifact_candidate 包含候选 ID、相对临时路径、类型、角色、展�
 
 artifact_result 明确返回 disposition（created/exact_reuse/visual_reuse）、artifactId、candidateSha256、artifactSha256。视觉复用另返回 matchReason/matchPercent；候选内容与实际复用媒体的 hash 可能不同，不能混用。自动采集根据复用类型继续执行原候选选择规则，重复候选不增加“新保存”计数、不突破每商品上限；人工选择只允许精确复用。复用命中的任务文案及来源仍保留，不能写成 caption:null。
 
+自动短视频恢复从最早未完成视频、趋势解析异常或缺文案的商品重新检查，保留已有成功媒体。缺文案只重新读取相同卡片并通过 `artifact_metadata` 更新本任务引用的 title/caption，不重复下载、登记或修改其他任务共享媒体的引用。宿主仅允许当前 active attempt 更新已登记视频，拒绝其他字段、空值、过长值和停止后的更新。候选无法唯一定位记 UNSUPPORTED_SOURCE 并检查后续候选；已保存卡片身份发生变化仍以 PAGE_CHANGED 停止。每商品满足 4 条新保存视频后，候选下载失败标记为 quota_satisfied 已解决并保留诊断历史，不为这些失败增加第 5 条视频；缺文案仍需补全，趋势异常只有重新识别成功后才清除。
+
+
+`artifact_metadata` 的 data 仅含 `{candidateId, metadata}`：candidateId 长度 1–200，metadata 非空且仅允许非空字符串 title（最多 2000 个字符）和 caption（最多 20000 个字符）。run/download_item 可调用，短操作不能调用；沿用 requestId/taskId/attempt 校验与 artifact_result 成功/错误回执，不移动媒体文件、不改变 artifactId/disposition。成功先提交本任务引用更新，再确认给 worker；被取消或旧 attempt 的迟到消息不落库。
+
 关联记录以 taskId 和候选 ID 建唯一约束。恢复后能够从已登记关系找回 artifactId，不因 attempt 增加而再次登记同一业务结果。
 
 报表/文本候选可声明 `replaceRole: true`，同任务、同 kind、同 role 只保留当前交付文件。固定 candidateId 在同 attempt 内幂等；下一 attempt 生成新报表后先完成新文件与登记事务，再撤销旧角色引用并回收无引用文件。失败保留原报告；文件占用则保留 delete_pending 等待协调。视频不允许 replaceRole。
@@ -211,6 +220,12 @@ artifact_result 明确返回 disposition（created/exact_reuse/visual_reuse）�
 `api.emit(type, data)` 发送带任务/操作身份的事件；`api.checkpoint(state)` 原子写入唯一状态 envelope 后报告 checkpoint；`api.boundary()` 在安全边界处理暂停/取消；`api.register(candidate)` 等待宿主登记并返回 artifact_result。业务代码不得用 console.log 输出协议外数据。控制对象提供 `cancelled`、`pauseRequested`；适配器必须在本单元完成保存后调用 boundary。read_results 不使用 checkpoint 或 register。
 
 `api.waitForUser(message)` 报告 waiting_user 并等待显式 resume/cancel，浏览器 lease 由宿主保留。`api.lookup(candidateId)` 返回 `{candidateId, registration}`，用于登记成功但尚未 checkpoint 的恢复接缝；registration 为 null 表示未登记。视觉指纹存入宿主 artifact_fingerprints，algorithm_version=1，沿用每秒采样、64 位 dHash、序列距离12、开头5帧距离16、80%匹配规则；首选最高分，同分保持先登记者。业务适配器提交候选指纹，宿主完成共享查询，无需把全量索引塞进 RunContext。
+
+waitForUser只允许正式run或人工download_item；discover/capture_page/read_results为短操作，没有继续按钮，遇登录/验证应返回错误，用户处理后重新读取。SDK拒绝短操作人工等待，防止队列永久阻塞。
+
+源码开发入口可用 `--acceptance` 临时开放四工具执行真实验收，不修改tools.json的发布状态；冻结发布入口拒绝此标记。使用同一用户数据/profile，验收结果仍由正式宿主记录。只有完成真实页面验收后才把发布描述的available改为true。
+
+导出单个Excel/文本使用保存对话框，用户确认后原子替换；单个或多个视频选择文件夹，同时交付视频与文案txt，按本任务和商品分组。批量同名使用递增后缀，不覆盖已有文件。取消返回cancelled:true；失败计入对应项目，不损坏内部结果。外部目标不能位于内部数据目录。
 
 候选 `relpath` 相对 dataRoot，必须位于当前任务 artifactStagingRoot；包含 candidateId、kind、role、displayName、metadata。宿主负责计算 hash、移动文件和登记。worker 退出前不会自行删除已提交候选。公共基础验证期间只使用测试适配器，四个真实适配器尚未实现时保持不可用。
 
@@ -248,7 +263,7 @@ manual-video 由宿主协调器维护选中条目快照、逐条状态、attempt
 | --- | --- | --- |
 | queued | 排队中 | running、cancelled、failed（启动环境失败） |
 | running | 执行中 | pausing、waiting_user、stopping、completed、completed_with_errors、failed、interrupted |
-| pausing | 正在暂停 | paused、stopping、completed、completed_with_errors、failed、interrupted |
+| pausing | 正在暂停 | paused、waiting_user、stopping、completed、completed_with_errors、failed、interrupted |
 | paused | 已暂停 | running、stopping、interrupted |
 | waiting_user | 等待处理 | running、stopping、interrupted |
 | stopping | 正在停止 | cancelled、failed、interrupted |
@@ -260,6 +275,7 @@ manual-video 由宿主协调器维护选中条目快照、逐条状态、attempt
 
 - 正常用户停止显示“已停止”，内部 cancelled；与进程崩溃 interrupted 区分。
 - 暂停请求与末尾完成事件交错时，允许 pausing 直接完成；已完成工作不进入永久暂停等待。停止请求后的末尾结果保留，但任务收敛为 cancelled。
+- 等待用户优先于暂停：宿主处于 pausing 时收到在途 waiting_user 消息，应显示 waiting_user；用户继续时，由现有 resume 同时清除 pauseRequested 与 waitingUser。
 - completed 表示执行范围已完成且没有未处理错误，不允许仅凭子进程退出码 0 判断。
 - 部分结果可在 failed/cancelled/interrupted 状态下查看，不伪装为整项任务成功。
 - 重试和恢复增加 attempt，已登记的成功视频保留，已完成类目/组合按旧恢复规则跳过。
@@ -294,7 +310,7 @@ engine-state.json 的 envelope 包含 formatVersion、toolId、taskId、attempt�
 
 ### 8.1 来源与链接类型
 
-source_kind：compass_ranking、douyin_profile、douyin_feed、pasted_link。
+source_kind：已接入 compass_ranking、public（粘贴的公开分享链接）；douyin_profile、douyin_feed 保留为可选来源，通过真实验证前不启用。
 
 link_kind：public_page、temporary_media、unavailable。无公开视频地址时，不从媒体 URL 猜测视频 ID。
 
@@ -340,3 +356,20 @@ link_kind：public_page、temporary_media、unavailable。无公开视频地址�
 | `STATE_CORRUPT` | 不自动覆盖损坏状态；显示诊断并保留已登记结果 |
 
 异常须保留原始诊断类别，不能把所有问题统一写成“下载失败”。是否可重试由错误及任务能力共同决定。
+
+
+罗盘卡片身份按优先级使用已观察原生 videoId（含公开视频链接中的 ID）、封面 origin+pathname、最后才使用标题。标题和封面签名查询参数不影响已取得更稳定身份的卡片；标题仅作为展示元数据。无原生 ID 的卡片仍受整个页面商品、卡片顺序快照约束；相同封面无法区分的弱卡片不供人工选择，不能以不同标题假装能唯一定位。更新前已生成的弱身份待选项须重新读取页面，旧自动任务检查点须新建任务，不猜测迁移身份。
+
+悬浮卡片缺标题时，最多等待 1 秒，只读取可见 popover 中含相同封面 origin+pathname 的唯一浮层标题；每次等待保留取消/暂停边界。其他卡片迟到的 tooltip、无对应封面或多个对应浮层均不提供标题，不能取任意最后可见浮层。媒体登记文案优先使用正常播放器的实际非空标题，缺失或空占位（-、--）才使用与卡片绑定的标题。
+
+更多视频浮层可能重复展示可见卡片的完整列表。只有浮层列表前缀与全部可见卡片的可观察身份按顺序完全一致，才保留可见卡片并追加浮层剩余项，且保留各项原始浮层 cardIndex；例如 4 张可见卡片加包含同前缀的 10 项浮层最终为 10 项，不能拼成 14 项导致漏扫末尾候选。没有完整有序前缀时仅按原生 ID 保守去重；同一列表中不同位置的相同弱封面仍保留为歧义，不凭封面合并。只有浮层列表时保留完整列表。
+
+正常播放器打开后仅在可见 video 有 currentSrc 且 readyState≥2 时接收媒体；等待仍保留 7 秒上限和外部 popup 分支。video.error（例如平台将 HTML 页面当视频导致 code=4）立即作为单条 MEDIA_UNAVAILABLE 记录并继续其他候选，不把该地址交给下载流程；提示此视频在平台播放器中无法播放，可跳过或稍后重试。
+
+
+## 2026-10-13：实现状态与实际验收边界
+
+- `tools.json`四项`available=true`表示可从统一界面使用，不能解释为所有平台、安装或异常场景验收完成。可选作者主页/推荐流仍未宣称支持。
+- 自动采集的媒体复用按任务引用保存文案状态；引用存在不代表本次新建文件，文案缺失须明确显示。平台播放器的`currentSrc`若实际指向罗盘HTML页面且媒体error=4，应返回`MEDIA_UNAVAILABLE`，不得登记成下载成功或把页面地址当视频链接。
+- 复制标题可处理无公开链接的会话条目；复制公开链接仅统计实际可用地址，无地址项返回unavailable计数。非法分享链接按输入校验拒绝。该约定已有真实最小范围证据，详细计数与限制见EXECUTION最新记录。
+- 本次版本更新记录当前实现状态及上述验收语义；NDJSON、状态机与共享引用约定继续按本文执行。最终冻结包、干净目标环境、清理和Git交付仍需独立通过门槛。

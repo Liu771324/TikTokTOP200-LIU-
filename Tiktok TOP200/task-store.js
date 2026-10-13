@@ -11,10 +11,6 @@ const CHECKPOINT_DIR = path.join(ROOT, 'data', 'checkpoints');
 const REPORT_DIR = path.join(ROOT, 'reports');
 const LOG_DIR = path.join(ROOT, 'logs');
 
-for (const directory of [TASK_DIR, CHECKPOINT_DIR, REPORT_DIR, LOG_DIR]) {
-  fs.mkdirSync(directory, { recursive: true });
-}
-
 function taskPath(taskId) {
   return path.join(TASK_DIR, `${taskId}.json`);
 }
@@ -24,6 +20,7 @@ function checkpointPath(taskId) {
 }
 
 function atomicWriteJson(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const temporary = `${filePath}.${process.pid}.tmp`;
   fs.writeFileSync(temporary, JSON.stringify(value, null, 2), 'utf8');
   fs.renameSync(temporary, filePath);
@@ -62,6 +59,14 @@ function createTask(parameters) {
   do {
     taskId = `top200-${stamp}-${crypto.randomUUID().slice(0, 8)}`;
   } while (fs.existsSync(taskPath(taskId)));
+  const taskNameBase = buildTaskName({ createdAt: now.toISOString(), parameters });
+  const duplicateIndex = listTasks().filter((item) => String(item.taskName || buildTaskName(item)).startsWith(taskNameBase)).length + 1;
+  const task = createTaskState(parameters, { taskId, createdAt: now.toISOString(), duplicateIndex });
+  saveTask(task);
+  return task;
+}
+
+function createTaskState(parameters, { taskId, createdAt = new Date().toISOString(), duplicateIndex = 1 }) {
   const combinations = [];
   for (const category of parameters.categories) {
     for (const rankingType of parameters.rankingTypes) {
@@ -75,12 +80,10 @@ function createTask(parameters) {
       });
     }
   }
-  const taskNameBase = buildTaskName({ createdAt: now.toISOString(), parameters });
-  const duplicateIndex = listTasks().filter((item) => String(item.taskName || buildTaskName(item)).startsWith(taskNameBase)).length + 1;
   const task = {
     taskId,
-    taskName: buildTaskName({ createdAt: now.toISOString(), parameters }, duplicateIndex),
-    createdAt: now.toISOString(),
+    taskName: buildTaskName({ createdAt, parameters }, duplicateIndex),
+    createdAt,
     completedAt: null,
     status: 'pending',
     parameters: {
@@ -104,7 +107,6 @@ function createTask(parameters) {
     failures: [],
     reportFiles: null,
   };
-  saveTask(task);
   return task;
 }
 
@@ -122,6 +124,7 @@ function loadTask(taskId) {
 }
 
 function listTasks() {
+  if (!fs.existsSync(TASK_DIR)) return [];
   return fs.readdirSync(TASK_DIR)
     .filter((name) => name.endsWith('.json'))
     .flatMap((name) => {
@@ -145,6 +148,7 @@ module.exports = {
   buildTaskName,
   selectVisibleTasks,
   createTask,
+  createTaskState,
   saveTask,
   loadTask,
   listTasks,

@@ -19,8 +19,10 @@ const {
   getBusinessTableState,
 } = require('./business_table');
 
+function createCollector(options = {}, hooks = {}) {
+// Each invocation owns configuration and safe-boundary callbacks; importing does no work.
+const log = hooks.onLog || console.log;
 const CONFIG = {
-  cdpUrl: process.env.CDP_URL || 'http://localhost:9222',
   pageUrl: 'https://fxg.jinritemai.com/ffa/bu/NewBusinessCenter',
   categoryLabel: process.env.CATEGORY_LABEL || '传统滋补/药食同源食品',
   categorySearch: process.env.CATEGORY_SEARCH || '药食同源',
@@ -30,21 +32,23 @@ const CONFIG = {
   maxItems: process.env.MAX_ITEMS ? Number(process.env.MAX_ITEMS) : Infinity,
   only30dGrowth: process.env.ONLY_30D_GROWTH === '1',
   stopFile: process.env.STOP_FILE || '',
-  pauseFile: path.join(__dirname, 'pause.flag'),
+  pauseFile: process.env.PAUSE_FILE || path.join(__dirname, 'pause.flag'),
   productAttempts: 3,
   drawerWaitSchedule: [3000, 5000, 8000],
   detailWaitSchedule: [2000, 3000, 5000],
   retryBackoffSchedule: [2000, 4000],
   pageWaitSchedule: [3000, 5000, 8000],
   pageSettleMs: 2000,
+  ...options,
 };
 
 async function checkPause() {
-  await waitWhilePaused({ pauseFile: CONFIG.pauseFile, stopFile: CONFIG.stopFile });
+  if (hooks.boundary) await hooks.boundary();
+  else await waitWhilePaused({ pauseFile: CONFIG.pauseFile, stopFile: CONFIG.stopFile });
 }
 
 function stopRequested() {
-  return isStopRequested(CONFIG.stopFile);
+  return hooks.shouldStop ? hooks.shouldStop() : isStopRequested(CONFIG.stopFile);
 }
 
 // ─── 帮助函数 ───
@@ -66,9 +70,20 @@ async function getFirstKeyword(page) {
 
 // ─── 品类选择（适配 aurora 组件库） ───
 
+async function readSelectedCategory(page) {
+  return page.evaluate(() => {
+    const input = document.querySelector('#category');
+    const selected = input?.closest('.aurora-cascader')?.querySelector('.aurora-select-content-value');
+    // The Aurora input holds search text; the selected full path is displayed separately.
+    return selected?.getAttribute('title')?.trim() || selected?.innerText?.trim()
+      || selected?.textContent?.trim() || input?.value || '';
+  });
+}
+
 async function selectCategory(page) {
-  const current = await page.evaluate(() => document.querySelector('#category')?.value || '');
-  if (current.includes(CONFIG.categorySearch)) return;
+  const current = await readSelectedCategory(page);
+  const normalize = (value) => String(value).replace(/\s+/g, '');
+  if (CONFIG.strictCategory ? normalize(current) === normalize(CONFIG.categoryLabel) : current.includes(CONFIG.categorySearch)) return;
 
   // aurora 级联选择器：不需要先点 picker，直接在 #category 输入框里搜
   await page.evaluate(() => {
@@ -112,7 +127,7 @@ async function ensureListView(page) {
   const hasData = (await getBusinessTableState(page)).rows.length > 0;
   if (hasData) return;
 
-  console.log('切换到列表视图…');
+  log('切换到列表视图…');
   await page.evaluate(() => {
     const btn = Array.from(document.querySelectorAll('button, [role=button], .aurora-btn'))
       .find((e) => e.innerText?.trim() === '列表');
@@ -128,7 +143,7 @@ async function ensureDescendingBySales(page) {
     const table = await getBusinessTableState(page);
     if (table.index < 0) throw new Error('未找到包含“搜索词”和“成交金额”的商机数据表');
     const values = table.rows.slice(0, 8).map((row) => row.salesAmount);
-    console.log(`排序确认 ${attempt}: ${table.sortDirection}｜${values.join(' → ')}`);
+    log(`排序确认 ${attempt}: ${table.sortDirection}｜${values.join(' → ')}`);
     if (table.sortDirection === 'descending' && areSalesValuesDescending(values)) return;
 
     const clicked = await clickSalesSorter(page, table.index);
@@ -186,7 +201,7 @@ async function ensureStableDataPage(page, expectedRowCount, pageNum) {
     getState: () => getPageState(page),
     wait: (waitMs) => page.waitForTimeout(waitMs),
     onAttempt: ({ attempt, waitMs, state }) => {
-      console.log(`第 ${pageNum} 页完整性确认 ${attempt}/3：${state.completeRowCount}/${state.rawRowCount} 行，等待 ${waitMs}ms`);
+      log(`第 ${pageNum} 页完整性确认 ${attempt}/3：${state.completeRowCount}/${state.rawRowCount} 行，等待 ${waitMs}ms`);
     },
   });
   if (!result.ok) {
@@ -245,7 +260,7 @@ async function goNextPage(page) {
     }),
     wait: (waitMs) => page.waitForTimeout(waitMs),
     onAttempt: ({ attempt, waitMs, current }) => {
-      console.log(`翻页到第 ${before.page + 1} 页：尝试 ${attempt}/3，等待 ${waitMs}ms（当前页码 ${current.page}）`);
+      log(`翻页到第 ${before.page + 1} 页：尝试 ${attempt}/3，等待 ${waitMs}ms（当前页码 ${current.page}）`);
     },
   });
 
@@ -384,56 +399,55 @@ async function readProductWithRetries(page, row, position) {
   const outcome = await runAttempts({
     attempts: CONFIG.productAttempts,
     operation: async (attempt) => {
-      await checkPause();
       const drawerWaitMs = CONFIG.drawerWaitSchedule[attempt - 1];
       const detailWaitMs = CONFIG.detailWaitSchedule[attempt - 1];
-      console.log(`[${position}] ${row.keyword}｜尝试 ${attempt}/${CONFIG.productAttempts}`);
+      log(`[${position}] ${row.keyword}｜尝试 ${attempt}/${CONFIG.productAttempts}`);
 
       try {
         const opened = await openProductDrawer(page, row.keyword, drawerWaitMs);
         if (!opened.ok) return opened;
         return await getDetail(page, detailWaitMs);
       } finally {
-        await closeDrawer(page);
+        if (!await closeDrawer(page)) throw Object.assign(new Error('商品抽屉未能关闭，已停止本类目'), { code: 'PAGE_CHANGED' });
       }
     },
+    shouldRetry: (error) => !['CANCELLED', 'PAGE_CHANGED', 'LOGIN_REQUIRED'].includes(error?.code),
     onRetry: async ({ attempt, result }) => {
       const backoffMs = CONFIG.retryBackoffSchedule[attempt - 1] || 2000;
-      console.log(`[${position}] ${row.keyword}｜尝试 ${attempt} 失败：${result.reason}，${backoffMs}ms 后重试`);
+      log(`[${position}] ${row.keyword}｜尝试 ${attempt} 失败：${result.reason}，${backoffMs}ms 后重试`);
       await closeDrawer(page);
       await page.waitForTimeout(backoffMs);
     },
   });
 
   if (outcome.ok && outcome.attempts > 1) {
-    console.log(`[${position}] ${row.keyword}｜第 ${outcome.attempts} 次重试成功`);
+    log(`[${position}] ${row.keyword}｜第 ${outcome.attempts} 次重试成功`);
   }
   return outcome;
 }
 
 // ─── 主流程（2026-08 适配：逐页顺序处理，替代旧 goToPage 跳转） ───
 
-async function main() {
+async function collect(page) {
   const startTime = Date.now();
-  let browser;
+  const bounds = validateSalesBounds(CONFIG.minSales, CONFIG.maxSales);
+  if (!bounds.ok) throw new Error(bounds.message);
+  CONFIG.minSales = bounds.minSales;
+  CONFIG.maxSales = bounds.maxSales;
+  if (!(CONFIG.maxPages > 0) || !(CONFIG.maxItems > 0)) throw new Error('MAX_PAGES 和 MAX_ITEMS 必须是大于 0 的数字');
   try {
-    const bounds = validateSalesBounds(CONFIG.minSales, CONFIG.maxSales);
-    if (!bounds.ok) throw new Error(bounds.message);
-    CONFIG.minSales = bounds.minSales;
-    CONFIG.maxSales = bounds.maxSales;
-    if (!(CONFIG.maxPages > 0) || !(CONFIG.maxItems > 0)) {
-      throw new Error('MAX_PAGES 和 MAX_ITEMS 必须是大于 0 的数字');
-    }
-
-    browser = await chromium.connectOverCDP(CONFIG.cdpUrl);
-    const context = browser.contexts()[0];
-    const page = context?.pages().find((candidate) => candidate.url().includes('jinritemai.com')) || context?.pages()[0];
-    if (!page) throw new Error('CDP 已连接，但没有可用浏览器页面');
-
     await page.goto(CONFIG.pageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    if (page.url().includes('/login')) throw new Error('未检测到抖店登录态，请先在 Edge 中完成登录');
-    await page.waitForTimeout(3500);
+  } catch (error) {
+    assertPage();
+    throw error;
+  }
+  assertPage();
+  await page.waitForTimeout(3500);
 
+  function assertPage() {
+    if (page.url().includes('/login')) throw Object.assign(new Error('请在受管 Edge 中完成登录'), { code: 'LOGIN_REQUIRED' });
+    if (!page.url().startsWith(CONFIG.pageUrl)) throw Object.assign(new Error('商机页面已改变，请重新打开商机中心'), { code: 'PAGE_CHANGED' });
+  }
     // 1. 选品类 + 切换列表视图
     await selectCategory(page);
     await ensureListView(page);
@@ -463,10 +477,34 @@ async function main() {
     let expectedPageSize = null;
     let completion = { status: 'complete', reason: 'range-complete', message: '金额区间扫描完成', coverageComplete: false };
     let scanFinished = false;
+    let expectedFingerprint = null;
+    const snapshot = () => ({ categoryLabel: CONFIG.categoryLabel, minSales: CONFIG.minSales,
+      maxSales: CONFIG.maxSales, only30dGrowth: CONFIG.only30dGrowth,
+      results: [...results], failures: [...failures], unparseableItems: [...unparseableItems], stats: { ...stats },
+      qualifyingCount, elapsedSeconds: Math.round((Date.now() - startTime) / 1000),
+      outputTime: new Date(), completion: { ...completion } });
+    async function boundary(pageNum) {
+      if (hooks.onSnapshot) await hooks.onSnapshot(snapshot(), pageNum);
+      await checkPause();
+      assertPage();
+      if (CONFIG.strictCategory) {
+        const selected = await readSelectedCategory(page);
+        if (selected.replace(/\s+/g, '') !== CONFIG.categoryLabel.replace(/\s+/g, '')) {
+          throw Object.assign(new Error('当前类目已改变，本类目需从头重新采集'), { code: 'PAGE_CHANGED' });
+        }
+        if (expectedFingerprint !== null) {
+          const table = await getBusinessTableState(page);
+          const fingerprint = table.rows.map((row) => `${row.keyword}::${row.salesAmount}`).join('|');
+          if (await getCurrentPage(page) !== pageNum || fingerprint !== expectedFingerprint || table.sortDirection !== 'descending') {
+            throw Object.assign(new Error('当前列表、页码或排序已改变，本类目需从头重新采集'), { code: 'PAGE_CHANGED' });
+          }
+        }
+      }
+    }
 
     // 4. 逐页处理：不再"先收集后跳转"，而是当前页达标商品直接打开抽屉处理
     for (let pageNum = 1; !scanFinished; pageNum += 1) {
-      await checkPause();
+      await boundary(pageNum);
       if (stopRequested()) {
         completion = { status: 'partial', reason: 'user-stopped', message: '用户手动停止', coverageComplete: false, stoppedAtPage: pageNum };
         break;
@@ -474,12 +512,14 @@ async function main() {
       const stablePage = await ensureStableDataPage(page, expectedPageSize, pageNum);
       if (expectedPageSize == null) expectedPageSize = stablePage.pageSize || stablePage.completeRowCount;
       const rows = await getRows(page);
+      expectedFingerprint = rows.map((row) => `${row.keyword}::${row.salesAmount}`).join('|');
       if (rows.length !== stablePage.completeRowCount) {
         throw new Error(`第 ${pageNum} 页在确认后又发生变化（确认 ${stablePage.completeRowCount} 行，实际 ${rows.length} 行），本轮已停止`);
       }
 
       let pageQualifying = 0;
       for (const row of rows) {
+        try {
         if (stopRequested()) {
           completion = { status: 'partial', reason: 'user-stopped', message: '用户手动停止', coverageComplete: false, stoppedAtPage: pageNum };
           scanFinished = true;
@@ -506,7 +546,7 @@ async function main() {
         const prefilter = decideGrowthPrefilter(CONFIG.only30dGrowth, row.growthTrend);
         if (!prefilter.openDetail) {
           stats.prefilterSkipped += 1;
-          console.log(`[${qualifyingCount}] ${row.keyword}｜近30天预筛选跳过：${prefilter.reason}`);
+          log(`[${qualifyingCount}] ${row.keyword}｜近30天预筛选跳过：${prefilter.reason}`);
           continue;
         }
         if (CONFIG.only30dGrowth) stats.prefilterPassed += 1;
@@ -520,7 +560,7 @@ async function main() {
             attempts: readResult.attempts,
             reason: readResult.reason,
           });
-          console.log(`[${qualifyingCount}] ${row.keyword}｜三次后仍无数据：${readResult.reason}`);
+          log(`[${qualifyingCount}] ${row.keyword}｜三次后仍无数据：${readResult.reason}`);
           continue;
         }
         if (readResult.attempts > 1) stats.retrySuccess += 1;
@@ -528,12 +568,12 @@ async function main() {
         const detail = readResult.detail;
         if (detail.trendDir === 'down') {
           stats.down += 1;
-          console.log(`[${qualifyingCount}] ${row.keyword}｜下跌`);
+          log(`[${qualifyingCount}] ${row.keyword}｜下跌`);
           continue;
         }
         if (detail.trendDir === 'flat' || detail.periodChange === '持平') {
           stats.flat += 1;
-          console.log(`[${qualifyingCount}] ${row.keyword}｜持平`);
+          log(`[${qualifyingCount}] ${row.keyword}｜持平`);
           continue;
         }
 
@@ -541,7 +581,7 @@ async function main() {
         if (growth.kind === 'fast') {
           stats.fast += 1;
           results.push({ keyword: row.keyword, totalSales: row.salesAmount, yesterday: '-', today: detail.salesAmount, growth: growth.display, category: 'fast', page: pageNum, attempts: readResult.attempts });
-          console.log(`[${qualifyingCount}] ${row.keyword}｜✓ 增速快`);
+          log(`[${qualifyingCount}] ${row.keyword}｜✓ 增速快`);
         } else if (growth.kind === 'normal' || growth.kind === 'lower-bound') {
           stats.normal += 1;
           results.push({
@@ -554,12 +594,12 @@ async function main() {
             page: pageNum,
             attempts: readResult.attempts,
           });
-          console.log(`[${qualifyingCount}] ${row.keyword}｜✓ ${growth.display}`);
+          log(`[${qualifyingCount}] ${row.keyword}｜✓ ${growth.display}`);
         } else {
           stats.unparseable += 1;
           const reason = `较上周期值无法解析：${detail.periodChange || '-'}`;
           unparseableItems.push({ keyword: row.keyword, page: pageNum, attempts: readResult.attempts, reason });
-          console.log(`[${qualifyingCount}] ${row.keyword}｜${reason}`);
+          log(`[${qualifyingCount}] ${row.keyword}｜${reason}`);
         }
 
         if (stopRequested()) {
@@ -567,9 +607,12 @@ async function main() {
           scanFinished = true;
           break;
         }
+        } finally {
+          if (countClassified(stats) === qualifyingCount) await boundary(pageNum);
+        }
       }
 
-      console.log(`第 ${pageNum} 页：${pageQualifying} 条达标 / 累计 ${qualifyingCount} 条达标 / ${results.length} 条增长`);
+      log(`第 ${pageNum} 页：${pageQualifying} 条达标 / 累计 ${qualifyingCount} 条达标 / ${results.length} 条增长`);
 
       // 停止条件
       if (scanFinished) break;
@@ -582,6 +625,7 @@ async function main() {
         }
         break;
       }
+      expectedFingerprint = null;
       const nextPage = await goNextPage(page);
       if (!nextPage.hasNext) {
         completion.coverageComplete = true;
@@ -594,36 +638,33 @@ async function main() {
       throw new Error(`完整性校验失败：已归类 ${classifiedCount} 条，达标商品 ${qualifyingCount} 条。为避免生成错误报告，本轮已停止`);
     }
 
-    const outputTime = new Date();
-    const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
-    const paths = await saveReports({
-      categoryLabel: CONFIG.categoryLabel,
-      minSales: CONFIG.minSales,
-      maxSales: CONFIG.maxSales,
-      only30dGrowth: CONFIG.only30dGrowth,
-      results,
-      qualifyingCount,
-      elapsedSeconds,
-      failures,
-      unparseableItems,
-      stats,
-      outputTime,
-      completion,
-    });
-    const outcome = completion.status === 'partial' ? '已停止，部分报告已生成' : '完成';
-    console.log(`\n${outcome}：${qualifyingCount} 条全部归类，近30天通过 ${stats.prefilterPassed} 条、跳过 ${stats.prefilterSkipped} 条，实际打开详情 ${stats.detailsOpened} 条，${results.length} 条增长，${stats.retrySuccess} 条重试成功，${stats.unavailable} 条三次后无数据`);
+    return snapshot();
+}
+return { collect };
+}
+
+async function main() {
+  const collector = createCollector();
+  let browser;
+  try {
+    browser = await chromium.connectOverCDP(process.env.CDP_URL || 'http://localhost:9222');
+    const context = browser.contexts()[0];
+    const page = context?.pages().find((candidate) => candidate.url().includes('jinritemai.com')) || context?.pages()[0];
+    if (!page) throw new Error('CDP 已连接，但没有可用浏览器页面');
+    const payload = await collector.collect(page);
+    const paths = await saveReports(payload);
     console.log(`报告：${paths.latestPath}`);
     console.log(`归档：${paths.archivePath}`);
   } finally {
     await browser?.close().catch(() => {});
-    if (CONFIG.stopFile) {
-      try { fs.unlinkSync(CONFIG.stopFile); } catch {}
+    if (process.env.STOP_FILE) {
+      try { fs.unlinkSync(process.env.STOP_FILE); } catch {}
     }
   }
 }
 
-main().catch((error) => {
+module.exports = { createCollector, main };
+if (require.main === module) main().catch((error) => {
   console.error(`采集失败：${error.message}`);
   process.exitCode = 1;
 });
-

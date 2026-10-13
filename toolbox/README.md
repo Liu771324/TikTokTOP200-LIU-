@@ -1,6 +1,8 @@
-# 电商工具箱公共基础
+# 电商工具箱
 
-这里是桌面工具箱的新实现目录。已实现桌面外壳、托盘、单实例、操作桥接、任务/浏览器调度、结果存储及工作者协议。四个真实工具仍在迁移，工具描述中的 available 必须在专项验收后才开启；当前可启动外壳，不代表完整业务已交付。
+这里是桌面工具箱实现目录，包含桌面外壳、托盘、单实例、操作桥接、任务/浏览器调度、结果存储、工作者协议及四个业务适配器。真实平台与安装验收仍在收尾；工具描述中的 available 必须在对应验收后才开启，不以本地测试替代交付门槛。
+
+普通用户见[使用说明](用户使用说明.md)；构建与安装验收见[Windows 构建说明](windows/README.md)。
 
 ## 开发启动
 
@@ -8,16 +10,20 @@
 
 开发桌面验收 `toolbox/.venv/Scripts/python.exe -m toolbox.desktop --smoke` 使用独占临时目录、测试 worker，验证主界面桥接、窗口隐藏恢复、托盘、单实例及任务后自动退出。不会登录或采集真实平台。真实 Edge 空白会话可单独运行 `python -m toolbox.tests.smoke_browser`。
 
+源码真实验收使用 `toolbox/.venv/Scripts/python.exe -m toolbox.desktop --acceptance`，开放四工具并使用当前用户的正式任务、结果与专用浏览器资料；仅供开发者验收，冻结发布程序拒绝此参数。
+
 ## 开发验证
 
 在总仓根目录、Python 3.13 与 Node 24 环境执行：
 
 ```powershell
-toolbox/.venv/Scripts/python.exe -m unittest toolbox.tests.test_foundation toolbox.tests.test_runtime toolbox.tests.test_bridge_operations -v
+toolbox/.venv/Scripts/python.exe -m unittest toolbox.tests.test_foundation toolbox.tests.test_runtime toolbox.tests.test_bridge_operations toolbox.tests.test_manual toolbox.tests.test_files toolbox.tests.test_integrated_engines toolbox.tests.test_packaging -q
 node --test toolbox/tests/sdk.test.cjs
 ```
 
 验证使用独占临时目录、测试 worker 和模拟页面，不采集真实平台。运行测试中的实际 FFmpeg 本地样本解码不证明网站下载可用。Windows 路径边界验证会在测试临时目录创建并移除一个 junction。
+
+公共集成验证会检查旧工具历史目录不被改写；请在旧工具测试全部结束后运行，避免其他测试同时写入它监测的目录。
 
 ## 入口与边界
 

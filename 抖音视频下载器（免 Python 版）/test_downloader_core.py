@@ -382,6 +382,53 @@ class DownloaderCoreTests(unittest.TestCase):
         self.assertTrue(processes[0].terminated)
         self.assertFalse(target.with_suffix(".mp4.part").exists())
 
+    def test_host_process_factory_is_used_and_job_closed(self):
+        job = Mock()
+        processes = []
+
+        def factory(command, **kwargs):
+            processes.append(FakeProcess(command, **kwargs))
+            return processes[-1], job
+
+        context = core.DownloadContext(self.output, self.scratch, self.context.ffmpeg_path, factory)
+        with patch.object(core, "extract_media_with_browser", return_value=self.resolved(audio=True)), \
+             patch.object(core.subprocess, "Popen") as standalone:
+            result = core.download_one(PUBLIC_URL, context, lambda *_: None, lambda *_: None)
+        standalone.assert_not_called()
+        job.close.assert_called_once()
+        self.assertEqual(result.path.read_bytes(), b"mux-fixture")
+
+    def test_host_job_closed_and_process_reaped_on_cancel(self):
+        job = Mock()
+        processes = []
+
+        def factory(command, **kwargs):
+            processes.append(FakeProcess(command, running=True, **kwargs))
+            return processes[-1], job
+
+        target = self.root / "host.mp4"
+        with self.assertRaises(core.DownloadCancelled):
+            core.mux_media(self.root / "v", self.root / "a", target,
+                           ffmpeg_path=self.context.ffmpeg_path, process_factory=factory,
+                           should_cancel=Mock(side_effect=[False, True]))
+        job.close.assert_called_once()
+        self.assertTrue(processes[0].terminated)
+        self.assertFalse(target.with_suffix(".mp4.part").exists())
+
+    def test_host_job_closed_on_ffmpeg_failure(self):
+        job = Mock()
+
+        def factory(command, **kwargs):
+            return FakeProcess(command, result=1, **kwargs), job
+
+        target = self.root / "host-failed.mp4"
+        with self.assertRaisesRegex(RuntimeError, "fixture ffmpeg failure"):
+            core.mux_media(self.root / "v", self.root / "a", target,
+                           ffmpeg_path=self.context.ffmpeg_path, process_factory=factory)
+        job.close.assert_called_once()
+        self.assertFalse(target.exists())
+        self.assertFalse(target.with_suffix(".mp4.part").exists())
+
     def test_ffmpeg_kills_when_terminate_does_not_finish(self):
         processes = []
 

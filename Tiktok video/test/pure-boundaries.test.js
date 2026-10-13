@@ -4,15 +4,17 @@ const test = require('node:test');
 const { mock } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const fs = require('node:fs');
 const { chromium } = require('playwright-core');
 
 // Guard the imports: neither the pure helpers nor module loading may start Edge.
 const launch = mock.method(chromium, 'launch', () => { throw new Error('Unexpected browser launch'); });
 const connect = mock.method(chromium, 'connectOverCDP', () => { throw new Error('Unexpected browser connection'); });
 const server = mock.method(http, 'createServer', () => { throw new Error('Unexpected media server'); });
+const mkdir = mock.method(fs, 'mkdirSync', () => { throw new Error('Unexpected source directory creation'); });
 const { allowedTrend, safePart, sharedProductNameAcrossCaptions } = require('../collector');
 const { visualOverlapPercent, openingSubjectOverlapPercent } = require('../video-fingerprint');
-const importCalls = [launch.mock.callCount(), connect.mock.callCount(), server.mock.callCount()];
+const importCalls = [launch.mock.callCount(), connect.mock.callCount(), server.mock.callCount(), mkdir.mock.callCount()];
 mock.restoreAll();
 
 const frame = (bits) => ((1n << BigInt(bits)) - 1n).toString(16).padStart(16, '0');
@@ -20,7 +22,7 @@ const fingerprint = (frames) => ({ duration: frames.length, frames });
 const repeated = (bits, count) => fingerprint(Array(count).fill(frame(bits)));
 
 test('importing collector and fingerprint does not launch/connect Edge or start a media server', () => {
-  assert.deepEqual(importCalls, [0, 0, 0]);
+  assert.deepEqual(importCalls, [0, 0, 0, 0]);
 });
 
 for (const [mode, expected] of [
@@ -104,9 +106,5 @@ test('missing fingerprint metadata does not produce a positive score', () => {
   assert.equal(openingSubjectOverlapPercent({ frames: [] }, repeated(0, 5)), 0);
 });
 
-// These are real integration expectations, not tests of a copied algorithm.
-// runTask closes over browser, storage and downloader functions; no injectable
-// pure boundary currently exposes rank limits, candidate count or recovery.
-for (const fixture of require('./boundary-expectations.json')) {
-  test(`pending integration: ${fixture.name}`, { skip: fixture.reason }, () => {});
-}
+// Scan limits, candidate quotas and recovery now run against the injected
+// collector in toolbox-adapters.test.js; real platform evidence remains separate.

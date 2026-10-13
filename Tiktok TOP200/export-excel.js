@@ -156,13 +156,14 @@ function appendWorksheet(workbook, name, rows, fallbackHeaders) {
   return { sheet, headers };
 }
 
-async function exportTask(task) {
+async function exportTask(task, options = {}) {
   const stamp = safeFileStamp(task.completedAt || task.createdAt);
   const base = `TOP200-${stamp}-${task.taskId}`;
-  const jsonPath = path.join(REPORT_DIR, `${base}.json`);
-  const xlsxPath = path.join(REPORT_DIR, `${base}.xlsx`);
+  const jsonPath = options.writeJson === false ? null : path.join(REPORT_DIR, `${base}.json`);
+  const xlsxPath = options.xlsxPath || path.join(REPORT_DIR, `${base}.xlsx`);
 
-  atomicWriteJson(jsonPath, task);
+  fs.mkdirSync(path.dirname(xlsxPath), { recursive: true });
+  if (jsonPath) atomicWriteJson(jsonPath, task);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = '抖音商品 TOP200 采集系统';
   workbook.created = new Date(task.createdAt);
@@ -171,8 +172,12 @@ async function exportTask(task) {
   appendWorksheet(workbook, '任务汇总', summaryRows, ['开始时间', '结束时间', '行业类目', '品牌类型', '榜单类型', '状态', '扫描数量', '上升数量', '首次上榜数量', '排除数量', '解析异常', '失败原因']);
   for (const rankingType of task.parameters.rankingTypes) appendRankingWorksheet(workbook, task, rankingType);
   appendWorksheet(workbook, '失败记录', failureRows, ['行业类目', '榜单类型', '页面号', '阶段', '错误原因', '重试次数', '记录时间']);
-  await workbook.xlsx.writeFile(xlsxPath);
-  if (!fs.existsSync(jsonPath) || !fs.existsSync(xlsxPath)) throw new Error('报告文件生成失败');
+  const temporary = `${xlsxPath}.${process.pid}.tmp`;
+  try {
+    await workbook.xlsx.writeFile(temporary);
+    fs.renameSync(temporary, xlsxPath);
+  } finally { fs.rmSync(temporary, { force: true }); }
+  if ((jsonPath && !fs.existsSync(jsonPath)) || !fs.existsSync(xlsxPath)) throw new Error('报告文件生成失败');
   return { jsonPath, xlsxPath };
 }
 

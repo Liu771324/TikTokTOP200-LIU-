@@ -60,15 +60,17 @@ async function readCategoryTree(page) {
   }, { endpoint: CATEGORY_ENDPOINT });
 }
 
-async function discoverCategories({ cdpUrl = edge.CDP_URL } = {}) {
-  const browser = await chromium.connectOverCDP(cdpUrl);
+async function discoverCategories({ cdpUrl = edge.CDP_URL, page: suppliedPage } = {}) {
+  const browser = suppliedPage ? null : await chromium.connectOverCDP(cdpUrl);
   try {
-    const context = browser.contexts()[0];
-    if (!context) throw new Error('Edge 调试会话中没有可用上下文');
-    let page = context.pages().find((candidate) => candidate.url().includes('NewBusinessCenter'));
+    const context = browser?.contexts()[0];
+    if (!suppliedPage && !context) throw new Error('Edge 调试会话中没有可用上下文');
+    let page = suppliedPage || context.pages().find((candidate) => candidate.url().includes('NewBusinessCenter'));
     if (!page) {
       page = context.pages().find((candidate) => candidate.url().includes('jinritemai.com'));
       if (!page) throw new Error('未找到已登录的抖店页面');
+    }
+    if (!page.url().includes('NewBusinessCenter') && !page.url().includes('/login')) {
       await page.goto(PAGE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(2500);
     }
@@ -83,7 +85,7 @@ async function discoverCategories({ cdpUrl = edge.CDP_URL } = {}) {
     if (!categories.length) throw new Error('商机中心没有返回可选类目');
     return { categories, discoveredAt: new Date().toISOString() };
   } finally {
-    await browser.close().catch(() => {});
+    await browser?.close().catch(() => {});
   }
 }
 

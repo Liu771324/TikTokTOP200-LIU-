@@ -19,12 +19,13 @@ PARAMETERS = {
 
 class TaskScheduler:
     def __init__(self, store, events, logs, browser, *, node, entrypoint, ffmpeg,
-                 descriptors, validate_video, visual_match=None, test_adapter=False):
+                 descriptors, validate_video, visual_match=None, test_adapter=False, runners=None):
         self.store, self.events, self.logs, self.browser = store, events, logs, browser
         self.node, self.entrypoint, self.ffmpeg = node, entrypoint, ffmpeg
         self.descriptors = descriptors
         self.validate_video, self.visual_match = validate_video, visual_match
         self._test_adapter = test_adapter
+        self.runners = runners or {}
         self._lock = threading.RLock()
         self._runs = {}
         self._closing = False
@@ -64,6 +65,16 @@ class TaskScheduler:
         if self.store.transition(task_id, state, attempt=attempt, **kwargs):
             self.events.emit('task.state', self.store.task(task_id), task_id)
 
+    def _worker_state(self, task_id, state, attempt, message=None):
+        with self._lock:
+            current = self.store.task(task_id)
+            if current['attempt'] != attempt or current['state'] == 'stopping':
+                return
+            progress = current['progress']
+            if message:
+                progress = {**progress, 'message': redact(message)}
+            self._state(task_id, state, attempt, progress=progress)
+
     def _schedule(self, task, retry_failed=False):
         task_id = task['id']
         if task_id in self._runs:
@@ -95,6 +106,12 @@ class TaskScheduler:
                         return
                     context = self.store.paths.task_context(task, self.ffmpeg, session)
                     self._state(task_id, 'running', attempt)
+                if task['toolId'] in self.runners:
+                    result = self.runners[task['toolId']].run(task, handle, context,
+                        lambda state, message=None: self._worker_state(task_id, state, attempt, message))
+                    with self._lock:
+                        self._state(task_id, 'cancelled' if handle['cancel'].is_set() else result['state'], attempt)
+                    return
                 with NodeWorker(self.node, self.entrypoint,
                                 on_log=lambda line: self.logs.write(line, task_id), test_adapter=self._test_adapter) as worker:
                     with self._lock:
@@ -138,10 +155,7 @@ class TaskScheduler:
                                 progress = {**current['progress'], 'checkpointAt': data.get('savedAt')}
                                 self.store.transition(task_id, current['state'], attempt=attempt, progress=progress, error=current['error'])
                         elif kind == 'state':
-                            with self._lock:
-                                current = self.store.task(task_id)['state']
-                                if current != 'stopping':
-                                    self._state(task_id, data['state'], attempt)
+                            self._worker_state(task_id, data['state'], attempt, data.get('message'))
                         elif kind == 'artifact_candidate':
                             try:
                                 registered = self.store.register(task_id, attempt, data,
@@ -155,6 +169,16 @@ class TaskScheduler:
                             worker.send('artifact_result', task_id=task_id, attempt=attempt, data={
                                 'candidateId': data['candidateId'],
                                 'registration': self.store.registered(task_id, data['candidateId'])})
+                        elif kind == 'artifact_metadata':
+                            try:
+                                if type(data) is not dict or data.keys() != {'candidateId', 'metadata'}:
+                                    raise ToolboxError('INVALID_PARAMETERS', '结果元数据消息格式无效。')
+                                updated = self.store.update_metadata(task_id, attempt, data['candidateId'], data['metadata'])
+                                response = {'candidateId': data['candidateId'], **updated}
+                                self.events.emit('task.artifact', updated, task_id)
+                            except ToolboxError as exc:
+                                response = {'candidateId': data.get('candidateId') if isinstance(data, dict) else None, 'error': exc.as_dict()}
+                            worker.send('artifact_result', task_id=task_id, attempt=attempt, data=response)
                         elif kind == 'result':
                             with self._lock:
                                 final = 'cancelled' if handle['cancel'].is_set() else data.get('state')

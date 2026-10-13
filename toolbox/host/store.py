@@ -186,6 +186,15 @@ class Store:
                         encode(error) if error else None, now(), task_id))
         return True
 
+    def update_progress(self, task_id, attempt, progress):
+        with self.transaction() as db:
+            row = db.execute("SELECT state,attempt FROM tasks WHERE id=?", (task_id,)).fetchone()
+            if row is None or row['attempt'] != attempt or row['state'] not in ACTIVE:
+                return False
+            db.execute("UPDATE tasks SET progress_json=?,updated_at=? WHERE id=?",
+                       (encode(progress), now(), task_id))
+        return True
+
     def recover(self):
         with self.transaction() as db:
             marks = ",".join("?" for _ in RECOVERABLE)
@@ -224,13 +233,42 @@ class Store:
                 WHERE a.status='ready' AND f.algorithm_version=1 ORDER BY a.rowid''').fetchall()
         return [{'artifactId': r['id'], 'sha256': r['sha256'], 'size': r['size'],
                  'fingerprint': json.loads(r['fingerprint_json'])}
-                for r in rows if self.paths.resolve(r['relpath']).is_file()]
+                for r in rows if (path := self.paths.resolve(r['relpath'])).is_file()
+                and path.stat().st_size == r['size']]
 
     def registered(self, task_id, candidate_id):
         with self._lock:
-            row = self._db.execute('SELECT registration_json FROM task_artifacts WHERE task_id=? AND candidate_id=?',
+            row = self._db.execute('''SELECT r.registration_json,a.status,a.relpath,a.size FROM task_artifacts r
+                JOIN artifacts a ON a.id=r.artifact_id WHERE task_id=? AND candidate_id=?''',
                                    (task_id, candidate_id)).fetchone()
-            return json.loads(row[0]) if row else None
+            if row and row['status'] == 'ready':
+                path = self.paths.resolve(row['relpath'])
+                if path.is_file() and path.stat().st_size == row['size']:
+                    return json.loads(row['registration_json'])
+            return None
+
+    def update_metadata(self, task_id, attempt, candidate_id, metadata):
+        limits = {'title': 2000, 'caption': 20000}
+        if (not isinstance(candidate_id, str) or not 1 <= len(candidate_id) <= 200
+                or type(metadata) is not dict or not metadata or metadata.keys() - limits.keys()
+                or any(not isinstance(value, str) or not value.strip() or len(value) > limits[key]
+                       for key, value in metadata.items())):
+            raise ToolboxError('INVALID_PARAMETERS', '仅可更新非空的视频标题和文案，且不能超过长度限制。')
+        with self.transaction() as db:
+            task = self.task(task_id)
+            if task['attempt'] != attempt or task['state'] not in ACTIVE:
+                raise ToolboxError('UNSUPPORTED_OPERATION', '元数据不属于当前执行。')
+            if task['state'] == 'stopping':
+                raise ToolboxError('CANCELLED', '操作已停止。')
+            row = db.execute('''SELECT r.metadata_json,r.registration_json,a.kind FROM task_artifacts r
+                JOIN artifacts a ON a.id=r.artifact_id WHERE r.task_id=? AND r.candidate_id=?''',
+                             (task_id, candidate_id)).fetchone()
+            if row is None or row['kind'] != 'video':
+                raise ToolboxError('INVALID_PARAMETERS', '当前任务没有此视频结果引用。')
+            updated = {**json.loads(row['metadata_json']), **metadata}
+            db.execute('UPDATE task_artifacts SET metadata_json=? WHERE task_id=? AND candidate_id=?',
+                       (encode(updated), task_id, candidate_id))
+            return json.loads(row['registration_json'])
 
     @file_operation
     def register(self, task_id, attempt, candidate, *, validate_video=None, visual_match=None):
@@ -249,6 +287,7 @@ class Store:
         if old_intent.exists():
             self.reconcile()
         journal = None
+        repair_reference = False
         with self._lock:
             task = self.task(task_id)
             if task["attempt"] != attempt or task["state"] not in ACTIVE:
@@ -257,8 +296,10 @@ class Store:
                                   (task_id, candidate_id)).fetchone()
             if existing:
                 previous = json.loads(existing[0])
-                if not replace_role or previous.get('registeredAttempt') == attempt:
+                valid_existing = self.registered(task_id, candidate_id)
+                if valid_existing and (not replace_role or previous.get('registeredAttempt') == attempt):
                     return previous
+                repair_reference = True
         source = self.paths.resolve(candidate.get("relpath", ""))
         staging = self.paths.resolve(f"tasks/{task_id}/staging")
         try:
@@ -288,7 +329,7 @@ class Store:
             if matched:
                 with self._lock:
                     match = self._db.execute("SELECT * FROM artifacts WHERE id=? AND kind='video' AND status='ready'", (matched["artifactId"],)).fetchone()
-                if match and self.paths.resolve(match["relpath"]).is_file():
+                if match and (matched_path := self.paths.resolve(match["relpath"])).is_file() and matched_path.stat().st_size == match['size']:
                     disposition = "visual_reuse"
                     match_data = {"matchReason": matched["matchReason"], "matchPercent": matched["matchPercent"]}
                 else:
@@ -323,16 +364,21 @@ class Store:
             if replace_role:
                 db.execute('DELETE FROM task_artifacts WHERE task_id=? AND role=? AND artifact_id IN (SELECT id FROM artifacts WHERE kind=?)',
                            (task_id, candidate.get('role', kind), kind))
+            elif repair_reference:
+                db.execute('DELETE FROM task_artifacts WHERE task_id=? AND candidate_id=?', (task_id, candidate_id))
             db.execute("INSERT INTO task_artifacts VALUES(?,?,?,?,?,?,?)",
                        (task_id, artifact_id, candidate_id, candidate.get("role", kind),
                         display_name, metadata_json, encode(result)))
-            if replace_role:
+            if replace_role or repair_reference:
                 db.execute("UPDATE artifacts SET status='delete_pending' WHERE NOT EXISTS(SELECT 1 FROM task_artifacts r WHERE r.artifact_id=artifacts.id)")
         # Never remove a candidate before its registration transaction is durable.
-        source.unlink(missing_ok=True)
-        if journal:
-            journal.unlink(missing_ok=True)
-        if replace_role:
+        try:
+            source.unlink(missing_ok=True)
+            if journal:
+                journal.unlink(missing_ok=True)
+        except OSError:
+            pass  # Registration is durable; reconcile or cache cleanup retries the remainder.
+        if replace_role or repair_reference:
             self.finish_deletions()
         return result
 

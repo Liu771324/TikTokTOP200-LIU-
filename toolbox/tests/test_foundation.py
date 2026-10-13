@@ -43,6 +43,27 @@ class StoreTests(unittest.TestCase):
     def register(self, task, candidate):
         return self.store.register(task['id'], task['attempt'], candidate, validate_video=lambda path: None)
 
+    def test_update_metadata_is_scoped_to_task_reference_and_attempt(self):
+        first, second = self.task(), self.task()
+        self.store.transition(first['id'], 'running')
+        self.store.transition(second['id'], 'running')
+        original = self.register(first, self.candidate(first))
+        self.register(second, self.candidate(second))
+        updated = self.store.update_metadata(first['id'], first['attempt'], 'one', {'caption': '新文案', 'title': '新标题'})
+        self.assertEqual(updated, original)
+        self.assertEqual(self.store.artifacts(first['id'])['items'][0]['metadata']['caption'], '新文案')
+        self.assertEqual(self.store.artifacts(second['id'])['items'][0]['metadata']['caption'], '本任务文案')
+        for candidate, metadata in [('missing', {'caption': '文案'}), ('one', {'rank': 1}), ('one', {'caption': ''}), ('one', {'title': '文' * 2001})]:
+            with self.assertRaises(ToolboxError):
+                self.store.update_metadata(first['id'], first['attempt'], candidate, metadata)
+        with self.assertRaises(ToolboxError):
+            self.store.update_metadata(first['id'], first['attempt'] + 1, 'one', {'caption': '旧执行'})
+        self.store.transition(first['id'], 'stopping')
+        with self.assertRaises(ToolboxError) as stopped:
+            self.store.update_metadata(first['id'], first['attempt'], 'one', {'caption': '迟到'})
+        self.assertEqual(stopped.exception.code, 'CANCELLED')
+        self.assertEqual(self.store.artifacts(first['id'])['items'][0]['metadata']['caption'], '新文案')
+
     def test_tasks_paginate_and_parameters_remain_immutable(self):
         for _ in range(25):
             self.task()
@@ -181,6 +202,35 @@ class StoreTests(unittest.TestCase):
         self.assertNotEqual(reused['candidateSha256'], reused['artifactSha256'])
         self.assertEqual(self.store.artifacts(second['id'])['items'][0]['metadata']['caption'], '本任务文案')
 
+    def test_truncated_video_is_excluded_from_visual_index(self):
+        fingerprint = {'duration': 20, 'frames': ['0123456789abcdef'] * 20}
+        first = self.task('video-ranking')
+        candidate = self.candidate(first, content=b'first complete media')
+        candidate['fingerprint'] = fingerprint
+        saved = self.register(first, candidate)
+        self.store.artifact_path(saved['artifactId']).write_bytes(b'x')
+        self.assertEqual(self.store.media_index(), [])
+        second = self.task('video-ranking')
+        candidate = self.candidate(second, content=b'new complete similar media')
+        candidate['fingerprint'] = fingerprint
+        result = self.register(second, candidate)
+        self.assertEqual(result['disposition'], 'created')
+        self.assertNotEqual(result['artifactId'], saved['artifactId'])
+        self.assertEqual(self.store.artifact_path(result['artifactId']).read_bytes(), b'new complete similar media')
+        self.assertIsNotNone(self.store.registered(second['id'], 'one'))
+
+    def test_visual_match_result_rechecks_existing_video_size(self):
+        first, second = self.task('video-ranking'), self.task('video-ranking')
+        saved = self.register(first, self.candidate(first))
+        self.store.artifact_path(saved['artifactId']).write_bytes(b'x')
+        candidate = self.candidate(second, content=b'new complete candidate')
+        result = self.store.register(second['id'], 1, candidate, validate_video=lambda p: None,
+            visual_match=lambda f: {'artifactId': saved['artifactId'], 'matchReason': 'opening', 'matchPercent': 90})
+        self.assertEqual(result['disposition'], 'created')
+        self.assertNotEqual(result['artifactId'], saved['artifactId'])
+        self.assertEqual(self.store.artifact_path(result['artifactId']).read_bytes(), b'new complete candidate')
+        self.assertIsNotNone(self.store.registered(second['id'], 'one'))
+
     def test_candidate_cannot_register_other_task_file(self):
         first, second = self.task(), self.task()
         with self.assertRaises(ToolboxError):
@@ -204,6 +254,16 @@ class StoreTests(unittest.TestCase):
         repaired = self.register(second, self.candidate(second))
         self.assertEqual(repaired['artifactId'], registered['artifactId'])
         self.assertTrue(self.store.artifact_path(registered['artifactId']).is_file())
+
+    def test_same_candidate_can_repair_missing_registered_asset(self):
+        task = self.task()
+        saved = self.register(task, self.candidate(task))
+        self.store.artifact_path(saved['artifactId']).unlink()
+        self.assertIsNone(self.store.registered(task['id'], 'one'))
+        repaired = self.register(task, self.candidate(task))
+        self.assertEqual(repaired['artifactId'], saved['artifactId'])
+        self.assertEqual(self.store.artifacts(task['id'])['total'], 1)
+        self.assertIsNotNone(self.store.registered(task['id'], 'one'))
 
     def test_video_requires_validator(self):
         task = self.task()

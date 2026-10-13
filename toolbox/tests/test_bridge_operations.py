@@ -5,6 +5,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from toolbox.host.application import load_core
 from toolbox.host.bridge import Bridge
@@ -55,6 +56,73 @@ class BridgeOperationsTests(unittest.TestCase):
         self.assertEqual(self.browser.order, [first, second])
         self.assertEqual(self.store.list_tasks()['total'], 0)
 
+    def call_with_messages(self, messages, kind='discover', tool_id='business-center'):
+        worker = MagicMock()
+        worker.__enter__.return_value = worker
+        worker.send.return_value = 'fixture-request'
+        worker.receive.side_effect = messages
+        with patch('toolbox.host.operations.NodeWorker', return_value=worker):
+            return self.operations._call(kind, {}, {'toolId': tool_id, 'operationId': 'fixture-operation'})
+
+    def test_business_discover_reassembles_over_one_mib_of_required_categories(self):
+        categories = [{'displayPath': f'电商一级类目 / 二级商品分类 / 商品三级类目{index}',
+                       'segments': ['电商一级类目', '二级商品分类', f'商品三级类目{index}'],
+                       'valuePath': ['100', '200', str(index)]} for index in range(10000)]
+        self.assertGreater(len(json.dumps(categories, ensure_ascii=False).encode('utf-8')), 1024 * 1024)
+        messages = [{'requestId': 'fixture-request', 'type': 'options_chunk',
+                     'data': {'field': 'categories', 'items': categories[offset:offset + 50]}}
+                    for offset in range(0, len(categories), 50)]
+        messages.append({'requestId': 'fixture-request', 'type': 'result',
+                         'data': {'categories': [], 'discoveredAt': '2026-10-12T00:00:00Z'}})
+        result = self.call_with_messages(messages)
+        self.assertEqual(result, {'categories': categories, 'discoveredAt': '2026-10-12T00:00:00Z'})
+        self.assertEqual(self.store.list_tasks()['total'], 0)
+        self.assertEqual(self.events.read()['events'], [])
+
+    def test_options_chunks_reject_wrong_operation_or_tool(self):
+        item = {'displayPath': '测试', 'segments': ['测试'], 'valuePath': ['1']}
+        message = {'requestId': 'fixture-request', 'type': 'options_chunk',
+                   'data': {'field': 'categories', 'items': [item]}}
+        for kind, tool_id in [('capture_page', 'business-center'), ('read_results', 'business-center'), ('discover', 'top200')]:
+            with self.subTest(kind=kind, tool_id=tool_id), self.assertRaises(ToolboxError) as caught:
+                self.call_with_messages([message], kind, tool_id)
+            self.assertEqual(caught.exception.code, 'WORKER_PROTOCOL_ERROR')
+
+    def test_options_chunks_reject_invalid_shapes_and_mixed_final_result(self):
+        item = {'displayPath': '测试', 'segments': ['测试'], 'valuePath': ['1']}
+        for data in [None, {'field': 'unexpected', 'items': [item]}, {'field': 'categories', 'items': []},
+                     {'field': 'categories', 'items': [item] * 51}, {'field': 'categories', 'items': [{}]}]:
+            with self.subTest(data=data), self.assertRaises(ToolboxError) as caught:
+                self.call_with_messages([{'requestId': 'fixture-request', 'type': 'options_chunk', 'data': data}])
+            self.assertEqual(caught.exception.code, 'WORKER_PROTOCOL_ERROR')
+        chunk = {'requestId': 'fixture-request', 'type': 'options_chunk', 'data': {'field': 'categories', 'items': [item]}}
+        with self.assertRaises(ToolboxError) as caught:
+            self.call_with_messages([chunk, {'requestId': 'fixture-request', 'type': 'result', 'data': {'categories': [item]}}])
+        self.assertEqual(caught.exception.code, 'WORKER_PROTOCOL_ERROR')
+
+    def test_options_chunks_reject_over_ten_thousand_categories(self):
+        item = {'displayPath': '测试', 'segments': ['测试'], 'valuePath': ['1']}
+        chunk = {'requestId': 'fixture-request', 'type': 'options_chunk', 'data': {'field': 'categories', 'items': [item] * 50}}
+        with self.assertRaises(ToolboxError) as caught:
+            self.call_with_messages([chunk] * 201)
+        self.assertEqual(caught.exception.code, 'WORKER_PROTOCOL_ERROR')
+
+    def test_options_chunks_ignore_other_request_and_small_results_stay_compatible(self):
+        result = {'categories': [{'displayPath': '测试', 'segments': ['测试'], 'valuePath': ['1']}]}
+        messages = [{'requestId': 'other-request', 'type': 'options_chunk', 'data': None},
+                    {'requestId': 'fixture-request', 'type': 'result', 'data': result}]
+        self.assertEqual(self.call_with_messages(messages), result)
+
+    def test_options_chunk_error_does_not_return_partial_categories(self):
+        messages = [{'requestId': 'fixture-request', 'type': 'options_chunk',
+                     'data': {'field': 'categories', 'items': [{'displayPath': '测试', 'segments': ['测试'], 'valuePath': ['1']}]}},
+                    {'requestId': 'fixture-request', 'type': 'error',
+                     'data': {'code': 'CANCELLED', 'message': 'fixture stopped'}}]
+        with self.assertRaises(ToolboxError) as caught:
+            self.call_with_messages(messages)
+        self.assertEqual(caught.exception.code, 'CANCELLED')
+        self.assertEqual(self.events.read()['events'], [])
+
     def test_capture_temporary_media_not_in_database_or_interface_events(self):
         operation_id = self.operations.submit('capture_page', 'manual-video', {'pageId': 'fixture-page'})['operationId']
         self.assertEqual(self.until_done(operation_id)['state'], 'completed')
@@ -82,6 +150,34 @@ class BridgeOperationsTests(unittest.TestCase):
             self.capture.ingest({'items': [{'sourceKey': 'fixture', 'sourceKind': 'compass_ranking',
                                           'locator': {'videoKey': 'https://media.test/?signature=secret'}}]})
         self.assertEqual(self.capture.list()['total'], 0)
+
+    def test_capture_failed_batch_does_not_publish_temporary_addresses(self):
+        with self.assertRaises(ToolboxError):
+            self.capture.ingest({'items': [
+                {'sourceKey': 'safe', 'sourceKind': 'compass_ranking', 'sourcePage': 'compass_ranking',
+                 'mediaUrl': 'https://media.test/?signature=secret'},
+                {'sourceKey': 'invalid', 'sourceKind': 'unsupported'},
+            ]})
+        self.assertEqual(self.capture.list()['total'], 0)
+        self.assertEqual(self.capture._temporary, {})
+
+    def test_capture_rejects_non_page_urls_and_normalizes_compass_public_url(self):
+        for url in ['ftp://www.douyin.com/video/123', 'https://www.douyin.com/aweme/v1/play?signature=secret']:
+            with self.subTest(url=url), self.assertRaises(ToolboxError):
+                self.capture.ingest({'items':[{'sourceKey':'safe','sourceKind':'public','publicUrl':url}]})
+        self.capture.ingest({'items':[{'sourceKey':'compass:video:123','sourceKind':'compass_ranking',
+            'sourcePage':'compass_ranking','publicUrl':'https://www.douyin.com/video/123/?signature=tracking'}]})
+        self.assertEqual(self.capture.list()['items'][0]['publicUrl'],'https://www.douyin.com/video/123')
+
+    def test_capture_source_page_query_is_not_saved_and_refresh_clears_stale_media(self):
+        item = {'sourceKey': 'safe', 'sourceKind': 'compass_ranking',
+                'sourcePage': 'https://compass.jinritemai.com/shop?signature=secret#secret',
+                'mediaUrl': 'https://media.test/?signature=secret'}
+        self.capture.ingest({'items': [item]})
+        self.assertEqual(self.capture.list()['items'][0]['sourcePage'], 'https://compass.jinritemai.com/shop')
+        del item['mediaUrl']
+        self.capture.ingest({'items': [item]})
+        self.assertFalse(self.capture.list()['items'][0]['temporaryAvailable'])
 
     def test_read_results_does_not_take_browser_or_create_directories(self):
         task = self.store.create_task('top200', {})

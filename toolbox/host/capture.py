@@ -1,6 +1,8 @@
 import json
 import threading
+import re
 from uuid import uuid4
+from urllib.parse import urlsplit, urlunsplit
 
 from .errors import ToolboxError
 from .events import now
@@ -29,34 +31,66 @@ class Capture:
         if type(items) is not list or len(items) > 200:
             raise ToolboxError('WORKER_PROTOCOL_ERROR', '本页读取结果过大或格式无效。')
         added, updated = 0, 0
-        with self._lock, self.store.transaction() as db:
-            for item in items:
-                source_key = item.get('sourceKey')
-                if not isinstance(source_key, str) or not source_key or len(source_key) > 1000:
-                    raise ToolboxError('WORKER_PROTOCOL_ERROR', '读取条目缺少稳定身份，请重新读取。')
-                if item.get('sourceKind') not in {'public', 'compass_ranking'}:
-                    raise ToolboxError('UNSUPPORTED_OPERATION', '此页面来源尚未通过验证。')
-                locator = item.get('locator', {})
-                # locators contain identity fields only; media addresses stay in memory.
-                if type(locator) is not dict or any(k not in {'pageId', 'productId', 'productKey', 'videoId', 'videoKey', 'category', 'rankingType', 'cardKey'} for k in locator):
-                    raise ToolboxError('WORKER_PROTOCOL_ERROR', '页面定位信息格式无效。')
-                if any(not isinstance(v, (str, int)) or '://' in str(v) for v in locator.values()):
-                    raise ToolboxError('WORKER_PROTOCOL_ERROR', '定位信息包含不允许保存的内容。')
-                public_url = item.get('publicUrl')
-                if public_url and (not isinstance(public_url, str) or not self.core._is_douyin_host(public_url)):
-                    raise ToolboxError('WORKER_PROTOCOL_ERROR', '公开链接来源无效。')
-                old = db.execute('SELECT id FROM capture_items WHERE source_key=?', (source_key,)).fetchone()
-                item_id = old[0] if old else uuid4().hex
-                values = (item_id, source_key, item['sourceKind'], str(item.get('sourcePage', ''))[:200],
-                          item.get('providerId'), str(item.get('title', '视频'))[:2000], public_url,
-                          'public_page' if public_url else 'temporary_media' if item.get('mediaUrl') else 'unavailable', encode(locator), now())
-                db.execute('INSERT OR REPLACE INTO capture_items VALUES(?,?,?,?,?,?,?,?,?,?)', values)
-                if item.get('mediaUrl'):
-                    self._temporary[item_id] = item['mediaUrl']
-                if old:
-                    updated += 1
+        temporary = {}
+        with self._lock:
+            with self.store.transaction() as db:
+                for item in items:
+                    if type(item) is not dict:
+                        raise ToolboxError('WORKER_PROTOCOL_ERROR', '读取条目格式无效。')
+                    source_key = item.get('sourceKey')
+                    if not isinstance(source_key, str) or not source_key or len(source_key) > 1000:
+                        raise ToolboxError('WORKER_PROTOCOL_ERROR', '读取条目缺少稳定身份，请重新读取。')
+                    if item.get('sourceKind') not in {'public', 'compass_ranking'}:
+                        raise ToolboxError('UNSUPPORTED_OPERATION', '此页面来源尚未通过验证。')
+                    source_page = str(item.get('sourcePage', ''))
+                    if item['sourceKind'] == 'compass_ranking':
+                        if '://' in source_key:
+                            raise ToolboxError('WORKER_PROTOCOL_ERROR', '页面条目身份不能包含媒体地址。')
+                        if source_page != 'compass_ranking':
+                            parsed = urlsplit(source_page)
+                            if parsed.scheme != 'https' or parsed.hostname != 'compass.jinritemai.com' or parsed.username or parsed.password:
+                                raise ToolboxError('WORKER_PROTOCOL_ERROR', '读取页面来源无效。')
+                            source_page = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, '', ''))
+                    locator = item.get('locator', {})
+                    # locators contain identity fields only; media addresses stay in memory.
+                    if type(locator) is not dict or any(k not in {'pageId', 'productId', 'productKey', 'videoId', 'videoKey', 'category', 'rankingType', 'cardKey'} for k in locator):
+                        raise ToolboxError('WORKER_PROTOCOL_ERROR', '页面定位信息格式无效。')
+                    if any(not isinstance(v, (str, int)) or '://' in str(v) for v in locator.values()):
+                        raise ToolboxError('WORKER_PROTOCOL_ERROR', '定位信息包含不允许保存的内容。')
+                    public_url = item.get('publicUrl')
+                    if public_url and (not isinstance(public_url, str) or not self.core._is_douyin_host(public_url)):
+                        raise ToolboxError('WORKER_PROTOCOL_ERROR', '公开链接来源无效。')
+                    if public_url:
+                        parsed = urlsplit(public_url)
+                        if parsed.scheme not in {'http', 'https'} or parsed.username or parsed.password or parsed.path.startswith('/aweme/'):
+                            raise ToolboxError('WORKER_PROTOCOL_ERROR', '公开链接必须是分享页面，不能是临时媒体地址。')
+                        if item['sourceKind'] == 'compass_ranking':
+                            if not re.fullmatch(r'/video/\d+/?', parsed.path):
+                                raise ToolboxError('WORKER_PROTOCOL_ERROR', '罗盘公开链接不是可识别的视频页面。')
+                            public_url = 'https://www.douyin.com' + parsed.path.rstrip('/')
+                    old = db.execute('SELECT id FROM capture_items WHERE source_key=?', (source_key,)).fetchone()
+                    item_id = old[0] if old else uuid4().hex
+                    provider_id = item.get('providerId')
+                    if provider_id is not None and (not isinstance(provider_id, (str, int)) or '://' in str(provider_id)):
+                        raise ToolboxError('WORKER_PROTOCOL_ERROR', '视频身份格式无效。')
+                    values = (item_id, source_key, item['sourceKind'], source_page[:200],
+                              item.get('providerId'), str(item.get('title', '视频'))[:2000], public_url,
+                              'public_page' if public_url else 'temporary_media' if item.get('mediaUrl') else 'unavailable', encode(locator), now())
+                    db.execute('INSERT OR REPLACE INTO capture_items VALUES(?,?,?,?,?,?,?,?,?,?)', values)
+                    if item.get('mediaUrl'):
+                        temporary[item_id] = item['mediaUrl']
+                    else:
+                        temporary[item_id] = None
+                    if old:
+                        updated += 1
+                    else:
+                        added += 1
+            # Publish ephemeral addresses only after the full batch commits.
+            for item_id, address in temporary.items():
+                if address:
+                    self._temporary[item_id] = address
                 else:
-                    added += 1
+                    self._temporary.pop(item_id, None)
         self.events.emit('capture.updated', {'added': added, 'updated': updated})
         return {'added': added, 'updated': updated, 'scope': result.get('scope', '当前已加载内容')}
 

@@ -25,6 +25,7 @@ class StopRequestedError extends Error {
   constructor() {
     super('用户已停止任务');
     this.name = 'StopRequestedError';
+    this.code = 'CANCELLED';
   }
 }
 
@@ -205,14 +206,15 @@ async function discoverRankingTypes(page, log = () => {}) {
   return rankingTypes;
 }
 
-async function discoverOptions(log = () => {}) {
-  const { browser, page } = await connectTargetPage();
+async function discoverOptions(log = () => {}, options = {}) {
+  const connection = await (options.connectTargetPage || connectTargetPage)();
+  const { page } = connection;
   try {
     const categories = await discoverCategories(page, log);
     const rankingTypes = await discoverRankingTypes(page, log);
     return { categories, rankingTypes, brandTypes: ['不限', '知名品牌', '非知名品牌'] };
   } finally {
-    await browser.close();
+    await (connection.disconnect ? connection.disconnect() : connection.browser.close());
   }
 }
 
@@ -446,7 +448,7 @@ async function resolveProductUrl(context, page, rowIndex, productIndex, productN
   return { url: '', attempted };
 }
 
-async function collectCombination({ context, page, task, combination, control, log }) {
+async function collectCombination({ context, page, task, combination, control, log, save = saveTask }) {
   await control.waitIfPaused();
   control.throwIfStopped();
   await selectRanking(page, combination.rankingType);
@@ -473,9 +475,13 @@ async function collectCombination({ context, page, task, combination, control, l
       up: local.up,
       first: local.first,
     });
-    saveTask(task);
+    save(task);
     log(`第 ${state.page} 页：读取 ${state.rows.length} 条，累计扫描 ${local.scanned}`);
     for (const row of state.rows) {
+      // A combination restarts from page one after interruption; save before acknowledging control.
+      save(task);
+      await control.waitIfPaused();
+      control.throwIfStopped();
       if (row.rank > task.parameters.rankLimit || local.scanned >= task.parameters.rankLimit) break;
       local.scanned += 1;
       const trend = parseTrend(row.trend);
@@ -557,7 +563,7 @@ async function collectCombination({ context, page, task, combination, control, l
       up: local.up,
       first: local.first,
     });
-    saveTask(task);
+    save(task);
 
     if (local.scanned >= task.parameters.rankLimit) {
       endedReason = '已检查原始前200名';
@@ -593,6 +599,15 @@ function recomputeTaskStats(task) {
 }
 
 async function runTask(task, control, log = () => {}, options = {}) {
+  const saveTask = options.saveTask || require('./task-store').saveTask;
+  const connect = options.connectTargetPage || connectTargetPage;
+  const collect = options.collectCombination || collectCombination;
+  const exportReport = options.exportTask || exportTask;
+  const isStopped = (error) => error instanceof StopRequestedError || error.code === 'CANCELLED';
+  const isFatal = (error, page) => {
+    if (page?.isClosed?.()) error.code = 'BROWSER_DISCONNECTED';
+    return isStopped(error) || ['LOGIN_REQUIRED', 'VERIFICATION_REQUIRED', 'BROWSER_DISCONNECTED'].includes(error.code);
+  };
   const only = options.onlyCombinationIds ? new Set(options.onlyCombinationIds) : null;
   if (only) {
     task.results = task.results.filter((record) => !only.has(record.combinationId));
@@ -603,16 +618,25 @@ async function runTask(task, control, log = () => {}, options = {}) {
   task.completedAt = null;
   saveTask(task);
 
-  const { browser, context, page } = await connectTargetPage();
+  let connection;
   try {
+    await control.waitIfPaused();
+    control.throwIfStopped();
+    // No browser is needed when a collected checkpoint only needs report registration.
+    if (task.combinations.some((item) => item.status !== 'completed' && (!only || only.has(item.id)))) connection = await connect();
+    const { context, page } = connection || {};
     for (const combination of task.combinations) {
       if (combination.status === 'completed' || (only && !only.has(combination.id))) continue;
       control.throwIfStopped();
       task.current = { combinationId: combination.id, categoryPath: combination.category.displayPath, rankingType: combination.rankingType };
-      combination.status = 'running';
+      Object.assign(combination, { status: 'running', scanned: 0, saved: 0, up: 0, first: 0,
+        excluded: 0, unparseable: 0, duplicates: 0, attempts: 0, completedAt: null,
+        requestedPeriod: '', actualPeriod: '', endedReason: '', error: '' });
       saveTask(task);
       log(`开始组合：${combination.category.displayPath} × ${combination.rankingType}`);
       try {
+        task.failures = task.failures.filter((failure) => failure.combinationId !== combination.id);
+        task.results = task.results.filter((record) => record.combinationId !== combination.id);
         const result = await runWithRetries(
           async (attempt) => {
             combination.attempts = attempt;
@@ -623,12 +647,12 @@ async function runTask(task, control, log = () => {}, options = {}) {
               retryAttempt: attempt,
             };
             saveTask(task);
-            return collectCombination({ context, page, task, combination, control, log });
+            return collect({ context, page, task, combination, control, log, save: saveTask });
           },
           {
             attempts: OPERATION_RETRIES,
             onFailure: async (error, attempt, finalAttempt) => {
-              if (error instanceof StopRequestedError) throw error;
+              if (isFatal(error, page)) throw error;
               task.failures = task.failures.filter((failure) => failure.combinationId !== combination.id);
               combination.error = error.message;
               saveTask(task);
@@ -653,7 +677,7 @@ async function runTask(task, control, log = () => {}, options = {}) {
         });
         log(`完成组合：扫描 ${result.local.scanned}，上升 ${result.local.up}，首次 ${result.local.first}，尝试 ${combination.attempts} 次`);
       } catch (error) {
-        if (error instanceof StopRequestedError) throw error;
+        if (isFatal(error, page)) throw error;
         combination.status = 'failed';
         combination.error = error.message;
         task.failures.push({
@@ -677,18 +701,21 @@ async function runTask(task, control, log = () => {}, options = {}) {
     task.completedAt = new Date().toISOString();
     task.status = 'completed';
     recomputeTaskStats(task);
-    task.reportFiles = await exportTask(task);
+    saveTask(task);
+    await control.waitIfPaused();
+    control.throwIfStopped();
+    task.reportFiles = await exportReport(task);
     saveTask(task);
     log(`任务完成：扫描 ${task.stats.scanned}，保存 ${task.results.length}，失败记录 ${task.failures.length}`);
     return task;
   } catch (error) {
     task.current = null;
-    task.status = error instanceof StopRequestedError ? 'stopped' : 'failed';
+    task.status = isStopped(error) ? 'stopped' : 'failed';
     task.lastError = error.message;
     saveTask(task);
     throw error;
   } finally {
-    await browser.close();
+    if (connection) await (connection.disconnect ? connection.disconnect() : connection.browser.close());
   }
 }
 
@@ -702,4 +729,5 @@ module.exports = {
   getTableState,
   waitForStableTable,
   runTask,
+  collectCombination,
 };

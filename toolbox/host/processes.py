@@ -5,6 +5,18 @@ import subprocess
 import time
 from ctypes import wintypes
 
+_lifetime_job = None
+
+
+def contain_current_process():
+    """Keep a kill-on-close job until OS process teardown; never close it while host is live."""
+    global _lifetime_job
+    if os.name == 'nt' and _lifetime_job is None:
+        from types import SimpleNamespace
+        kernel = ctypes.WinDLL('kernel32')
+        kernel.GetCurrentProcess.restype = wintypes.HANDLE
+        _lifetime_job = ProcessJob(SimpleNamespace(_handle=kernel.GetCurrentProcess()))
+
 
 class ProcessJob:
     def __init__(self, process):

@@ -1,38 +1,90 @@
 [
   {
     "name": "total 199 scans only ranks 1 through 199",
-    "input": { "total": 199, "pageSize": 20 },
-    "expected": { "lastScannedRank": 199, "rank200Processed": false },
-    "reason": "Requires runTask with injected page, state, control and media interfaces; no existing pure function exposes the scan limit."
+    "input": {
+      "total": 199,
+      "pageSize": 20
+    },
+    "expected": {
+      "lastScannedRank": 199,
+      "rank200Processed": false
+    },
+    "verifiedBy": "toolbox-adapters.test.js (injected local collector; no platform validation)"
   },
   {
     "name": "total 200 includes rank 200",
-    "input": { "total": 200, "pageSize": 20 },
-    "expected": { "lastScannedRank": 200 },
-    "reason": "Requires runTask with injected dependencies; comparing a copied Math.min expression would not verify the collector."
+    "input": {
+      "total": 200,
+      "pageSize": 20
+    },
+    "expected": {
+      "lastScannedRank": 200
+    },
+    "verifiedBy": "toolbox-adapters.test.js (injected local collector; no platform validation)"
   },
   {
     "name": "total 201 never processes rank 201",
-    "input": { "total": 201, "pageSize": 20 },
-    "expected": { "lastScannedRank": 200, "rank201Processed": false },
-    "reason": "Requires real scan-loop execution with an injected page fixture; no browser is started during this pure-function baseline."
+    "input": {
+      "total": 201,
+      "pageSize": 20
+    },
+    "expected": {
+      "lastScannedRank": 200,
+      "rank201Processed": false
+    },
+    "verifiedBy": "toolbox-adapters.test.js (injected local collector; no platform validation)"
   },
   {
     "name": "six unique candidates stop after four saved videos",
-    "input": { "candidateOutcomes": ["created", "created", "created", "created", "created", "created"] },
-    "expected": { "candidatesProcessed": 4, "newVideosSaved": 4 },
-    "reason": "The four-video cap lives inside runTask and depends on actual completed video references; not exported as a pure helper."
+    "input": {
+      "candidateOutcomes": [
+        "created",
+        "created",
+        "created",
+        "created",
+        "created",
+        "created"
+      ]
+    },
+    "expected": {
+      "candidatesProcessed": 4,
+      "newVideosSaved": 4
+    },
+    "verifiedBy": "toolbox-adapters.test.js (injected local collector; no platform validation)"
   },
   {
     "name": "duplicate and failed candidates do not consume the four-video quota",
-    "input": { "candidateOutcomes": ["exact_reuse", "created", "visual_reuse", "failed", "created", "created", "created", "created"] },
-    "expected": { "candidatesProcessed": 7, "newVideosSaved": 4, "duplicatesSkipped": 2, "failedCandidates": 1 },
-    "reason": "Needs host media registration dispositions and a stub single-video downloader before the collector loop can be tested faithfully."
+    "input": {
+      "candidateOutcomes": [
+        "exact_reuse",
+        "created",
+        "visual_reuse",
+        "failed",
+        "created",
+        "created",
+        "created",
+        "created"
+      ]
+    },
+    "expected": {
+      "candidatesProcessed": 7,
+      "newVideosSaved": 4,
+      "duplicatesSkipped": 2,
+      "failedCandidates": 1
+    },
+    "verifiedBy": "toolbox-adapters.test.js (injected local collector; no platform validation)"
   },
   {
     "name": "changed product at a recorded rank blocks recovery",
-    "input": { "recordedRank": 5, "recordedProduct": "商品A/店铺A", "currentProduct": "商品B/店铺B" },
-    "expected": { "newVideosDownloaded": 0, "result": "recovery rejected with product-changed explanation" },
-    "reason": "Product identity and recovery checks live inside runTask; requires the upcoming injected state/page interfaces."
+    "input": {
+      "recordedRank": 5,
+      "recordedProduct": "商品A/店铺A",
+      "currentProduct": "商品B/店铺B"
+    },
+    "expected": {
+      "newVideosDownloaded": 0,
+      "result": "recovery rejected with product-changed explanation"
+    },
+    "verifiedBy": "toolbox-adapters.test.js (injected local collector; no platform validation)"
   }
 ]

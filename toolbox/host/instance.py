@@ -17,10 +17,12 @@ class SingleInstance:
         name = 'Local\\ScriptAllToolbox-' + hashlib.sha256(str(identity).encode()).hexdigest()[:24]
         self.event = self.kernel.CreateEventW(None, False, False, name + '-show')
         self.mutex = self.kernel.CreateMutexW(None, False, name)
-        if not self.event or not self.mutex:
+        existed = ctypes.get_last_error() == 183
+        self.install_guard = self.kernel.CreateMutexW(None, False, r'Local\ScriptAllToolbox.InstallGuard')
+        if not self.event or not self.mutex or not self.install_guard:
             self.close()
             raise ctypes.WinError(ctypes.get_last_error())
-        self.primary = ctypes.get_last_error() != 183
+        self.primary = not existed
         self._closed = threading.Event()
         self._thread = None
         if not self.primary:
@@ -39,7 +41,7 @@ class SingleInstance:
             self._closed.set()
         if getattr(self, '_thread', None):
             self._thread.join(1)
-        for name in ('mutex', 'event'):
+        for name in ('install_guard', 'mutex', 'event'):
             if handle := getattr(self, name, None):
                 self.kernel.CloseHandle(handle)
                 setattr(self, name, None)

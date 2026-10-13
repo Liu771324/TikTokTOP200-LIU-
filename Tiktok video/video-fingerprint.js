@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const http = require('node:http');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
 const { findEdgePath } = require('./edge');
@@ -14,14 +15,18 @@ const OPENING_SAMPLE_COUNT = 5;
 const MIN_SAMPLES = 12;
 const BIT_COUNTS = [0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4];
 
-function fileFromVideoDirectory(relativePath) {
-  if (typeof relativePath !== 'string' || !relativePath) return null;
-  const root = path.resolve(VIDEO_DIR);
-  const file = path.resolve(root, relativePath);
-  return file.startsWith(`${root}${path.sep}`) ? file : null;
-}
-
-function startMediaServer() {
+// Only files explicitly mapped for an active fingerprint call are served.
+function startMediaServer(allowedRoot = VIDEO_DIR) {
+  const files = new Map();
+  const root = fs.realpathSync(allowedRoot);
+  function mapFile(file) {
+    const real = fs.realpathSync(file);
+    const relative = path.relative(root, real);
+    if (!relative || relative.startsWith(`..${path.sep}`) || relative === '..' || path.isAbsolute(relative) || !fs.statSync(real).isFile() || !fs.statSync(real).size) throw new Error('视觉指纹文件不在允许的任务目录或为空');
+    const token = crypto.randomUUID();
+    files.set(token, real);
+    return token;
+  }
   const server = http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
@@ -33,7 +38,7 @@ function startMediaServer() {
       response.writeHead(404).end();
       return;
     }
-    const file = fileFromVideoDirectory(url.searchParams.get('path'));
+    const file = files.get(url.searchParams.get('token'));
     if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
       response.writeHead(404).end();
       return;
@@ -82,25 +87,29 @@ function startMediaServer() {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => {
       server.removeListener('error', reject);
-      resolve({ server, origin: `http://127.0.0.1:${server.address().port}` });
+      resolve({ server, mapFile, unmapFile: token => files.delete(token), origin: `http://127.0.0.1:${server.address().port}` });
     });
   });
 }
 
-async function createVideoFingerprinter() {
-  const { server, origin } = await startMediaServer();
+async function createVideoFingerprinter(options = {}) {
+  const { server, origin, mapFile, unmapFile } = await startMediaServer(options.allowedRoot || VIDEO_DIR);
   let browser;
   try {
-    const edgePath = findEdgePath();
+    const edgePath = options.edgePath || findEdgePath();
     if (!edgePath) throw new Error('找不到 Microsoft Edge，无法进行视觉去重');
     browser = await chromium.launch({ headless: true, executablePath: edgePath });
     const page = await browser.newPage();
     await page.goto(origin, { waitUntil: 'load', timeout: 10000 });
     return {
       async fingerprintFile(file) {
-        const relativePath = path.relative(VIDEO_DIR, file);
-        const url = `${origin}/video?path=${encodeURIComponent(relativePath)}`;
-        return page.evaluate(async ({ videoUrl, sampleInterval }) => {
+        if (options.isCancelled?.()) throw Object.assign(new Error('操作已停止。'), { code: 'CANCELLED' });
+        const token = mapFile(file);
+        const url = `${origin}/video?token=${encodeURIComponent(token)}`;
+        const cancelTimer = options.isCancelled ? setInterval(() => {
+          if (options.isCancelled()) browser.close().catch(() => {});
+        }, 100) : null;
+        try { return await page.evaluate(async ({ videoUrl, sampleInterval }) => {
           const video = document.createElement('video');
           video.muted = true;
           video.preload = 'auto';
@@ -147,6 +156,10 @@ async function createVideoFingerprinter() {
             video.load();
           }
         }, { videoUrl: url, sampleInterval: SAMPLE_INTERVAL_SECONDS });
+        } catch (error) {
+          if (options.isCancelled?.()) throw Object.assign(new Error('操作已停止。'), { code: 'CANCELLED' });
+          throw error;
+        } finally { if (cancelTimer) clearInterval(cancelTimer); unmapFile(token); }
       },
       async close() {
         await browser.close().catch(() => {});
@@ -216,4 +229,4 @@ function openingSubjectOverlapPercent(left, right) {
   return Math.round((previous[rightFrames.length] / Math.min(leftFrames.length, rightFrames.length)) * 100);
 }
 
-module.exports = { createVideoFingerprinter, visualOverlapPercent, openingSubjectOverlapPercent };
+module.exports = { startMediaServer, createVideoFingerprinter, visualOverlapPercent, openingSubjectOverlapPercent };

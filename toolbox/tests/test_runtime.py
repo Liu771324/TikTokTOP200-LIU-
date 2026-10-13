@@ -9,7 +9,7 @@ import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 from toolbox.host.browser import BrowserManager
 from toolbox.host.errors import ToolboxError
@@ -29,7 +29,7 @@ class FixtureBrowser:
         self.order = []
 
     @contextmanager
-    def lease(self, owner, cancelled, reservation):
+    def lease(self, owner, cancelled, reservation=None):
         with self.queue.lease(owner, cancelled, reservation) as ticket:
             self.order.append(owner)
             yield {'endpoint': 'http://127.0.0.1:1', 'leaseId': ticket['leaseId']}
@@ -70,6 +70,16 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.browser.order, [first['id'], second['id']])
         self.assertEqual(self.logs.read(first['id'])['items'][0]['message'], '中文、多行\n日志与 "引号"')
 
+    def test_node_metadata_protocol_roundtrip_updates_task_reference(self):
+        task = self.store.create_task('top200', {'count': 0, 'metadataRoundtrip': True})
+        with self.scheduler._lock:
+            self.scheduler._schedule(task)
+        self.until(lambda: task['id'] not in self.scheduler._runs)
+        self.assertEqual(self.store.task(task['id'])['state'], 'completed')
+        items = self.store.artifacts(task['id'])['items']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['metadata'], {'caption': '补全文案', 'title': '补全标题'})
+
     def test_paused_task_keeps_browser_and_cancel_releases_for_next_task(self):
         first = self.scheduler.create('top200', {'categories': ['fixture'] * 1000})
         self.until(lambda: self.store.task(first['id'])['progress'].get('current', -1) >= 0)
@@ -91,6 +101,30 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.store.task(second['id'])['state'], 'cancelled')
         self.assertEqual(self.browser.order, [first['id']])
         self.scheduler.control(first['id'], 'cancel')
+
+    def test_inflight_user_wait_takes_priority_over_pause_and_can_resume(self):
+        task = self.store.create_task('top200', {'categories': ['fixture']})
+        self.store.transition(task['id'], 'running', attempt=task['attempt'])
+        worker = Mock()
+        with patch.dict(self.scheduler._runs, {task['id']: {'worker': worker}}):
+            with self.browser.queue.lease(task['id']):
+                self.scheduler.control(task['id'], 'pause')
+                self.assertEqual(self.store.task(task['id'])['state'], 'pausing')
+                # The worker sent this before it received the pause command;
+                # deliver it only after the host has recorded the pause intent.
+                self.scheduler._worker_state(task['id'], 'waiting_user', task['attempt'], '请完成登录')
+                waiting = self.store.task(task['id'])
+                self.assertEqual(waiting['state'], 'waiting_user')
+                self.assertEqual(waiting['progress']['message'], '请完成登录')
+                self.assertEqual(self.browser.queue.state()['holder']['owner'], task['id'])
+                self.scheduler.control(task['id'], 'resume')
+                self.scheduler._worker_state(task['id'], 'running', task['attempt'])
+                self.assertEqual(self.store.task(task['id'])['state'], 'running')
+                self.assertEqual(self.store.task(task['id'])['attempt'], task['attempt'])
+        self.assertEqual(worker.send.call_args_list, [
+            call('pause', task_id=task['id'], attempt=task['attempt']),
+            call('resume', task_id=task['id'], attempt=task['attempt']),
+        ])
 
     def test_resume_increments_attempt_and_preserves_parameters(self):
         task = self.scheduler.create('top200', {'categories': ['fixture'] * 1000})
