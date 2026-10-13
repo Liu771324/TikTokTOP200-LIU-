@@ -477,4 +477,3 @@ npm --prefix "Tiktok video" test
 ### 2026-10-13：商机界面结果与系统打开
 
 真实界面 seq89 显示商机任务已完成、1 个 Excel 和 3 条业务结果，名称/成交/增长/类目与已校验工作簿对应。seq90 artifacts.open 返回 opened=true，已交由系统关联应用打开；此返回不代替人工核对外部 Excel 窗口渲染。源码 WebView 此轮 reload 仍使用原加载脚本，最新进度文案实机显示留待重启/新冻结包；本地 UI smoke 结果独立有效。
-
