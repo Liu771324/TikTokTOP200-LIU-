@@ -78,6 +78,45 @@ class Files:
             raise ToolboxError('INVALID_PARAMETERS', '导出位置不能位于工具箱内部数据目录。')
         return target
 
+    def get_export_location(self):
+        path = self.store.paths.resolve('preferences.json')
+        try:
+            preferences = json.loads(path.read_text(encoding='utf-8'))
+        except FileNotFoundError:
+            return {'path': None}
+        except (OSError, ValueError) as error:
+            raise ToolboxError('FILE_WRITE_FAILED', '默认导出位置设置无法读取，请重新选择文件夹。') from error
+        if (type(preferences) is not dict or preferences.get('version') != 1
+                or not isinstance(preferences.get('exportDirectory'), str)):
+            raise ToolboxError('FILE_WRITE_FAILED', '默认导出位置设置无效，请重新选择文件夹。')
+        return {'path': str(self._external(preferences['exportDirectory']))}
+
+    def choose_export_location(self):
+        import webview
+        with self._lock:
+            selected = self.window.create_file_dialog(webview.FileDialog.FOLDER)
+            if not selected:
+                return {'cancelled': True}
+            directory = self._external(selected[0])
+            if not directory.is_dir():
+                raise ToolboxError('INVALID_PARAMETERS', '请选择已有的外部文件夹。')
+            path = self.store.paths.resolve('preferences.json')
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                        prefix='.preferences-', suffix='.tmp', delete=False) as stream:
+                    temporary = Path(stream.name)
+                    json.dump({'version': 1, 'exportDirectory': str(directory)}, stream, ensure_ascii=False)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, path)
+            except OSError as error:
+                raise ToolboxError('FILE_WRITE_FAILED', '默认导出位置未保存，请检查文件占用和空间后重试。') from error
+            finally:
+                if temporary:
+                    temporary.unlink(missing_ok=True)
+            return {'path': str(directory), 'cancelled': False}
+
     @staticmethod
     def _name(parent, name, suffix='', maximum=80):
         # Leave room below the traditional Windows path limit, including collision suffixes.
@@ -226,14 +265,18 @@ class Files:
             if not sources:
                 return {'exported': 0, 'skipped': 0, 'failed': len(errors), 'errors': errors}
             single = len(references) == 1 and not missing and sources[0][0]['kind'] != 'video'
+            default_directory = self.get_export_location()['path']
+            dialog_directory = {'directory': default_directory} if default_directory else {}
             if single:
                 reference, source = sources[0]
                 label = reference['displayName']
                 if label.lower().endswith(source.suffix.lower()):
                     label = label[:-len(source.suffix)]
-                selected = self.window.create_file_dialog(webview.FileDialog.SAVE, save_filename=display_filename(label, source.suffix))
+                selected = self.window.create_file_dialog(webview.FileDialog.SAVE, save_filename=display_filename(label, source.suffix), **dialog_directory)
+            elif default_directory and all(reference['kind'] == 'video' for reference, _ in sources):
+                selected = (default_directory,)
             else:
-                selected = self.window.create_file_dialog(webview.FileDialog.FOLDER)
+                selected = self.window.create_file_dialog(webview.FileDialog.FOLDER, **dialog_directory)
             if not selected:
                 return {'exported': 0, 'skipped': len(sources), 'failed': len(errors), 'cancelled': True, 'errors': errors}
             exported = 0
@@ -267,7 +310,9 @@ class Files:
         if type(items) is not list or not 1 <= len(items) <= 200 or any(not isinstance(item, dict) for item in items):
             raise ToolboxError('INVALID_PARAMETERS', '请选择一到二百个待选条目。')
         with self._lock:
-            selected = self.window.create_file_dialog(webview.FileDialog.SAVE, save_filename='视频待选列表.xlsx', file_types=('Excel 文件 (*.xlsx)',))
+            default_directory = self.get_export_location()['path']
+            dialog_directory = {'directory': default_directory} if default_directory else {}
+            selected = self.window.create_file_dialog(webview.FileDialog.SAVE, save_filename='视频待选列表.xlsx', file_types=('Excel 文件 (*.xlsx)',), **dialog_directory)
             if not selected:
                 return {'exported': 0, 'skipped': len(items), 'failed': 0, 'cancelled': True}
             workbook = Workbook()

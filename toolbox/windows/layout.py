@@ -26,6 +26,7 @@ SOURCE_FILES = tuple(f'{directory}/{name}' for directory, names in BUSINESS_FILE
     f'toolbox/node/{name}' for name in NODE_FILES) + tuple(f'toolbox/web/{name}' for name in WEB_FILES) + (
         'toolbox/tools.json', CORE, 'toolbox/THIRD_PARTY_NOTICES.md', '抖音视频下载器（免 Python 版）/THIRD_PARTY_NOTICES.md')
 RUNTIME_LICENSES = ('python', 'proxy_tools')
+FROZEN_DATA_FILES = tuple(name for name in SOURCE_FILES if name != CORE)
 REQUIRE = re.compile(r"\brequire\s*\(\s*['\"]([^'\"]+)['\"]\s*\)")
 
 
@@ -59,9 +60,14 @@ def validate_sources(root):
     return True
 
 
-def source_datas(root):
+def source_datas(root, staged_root=None):
     validate_sources(root)
-    return [(str(Path(root) / name), str(Path(name).parent)) for name in SOURCE_FILES]
+    data_root = Path(staged_root or root).resolve()
+    for name in FROZEN_DATA_FILES:
+        file = data_root / name
+        if not file.is_file() or not file.resolve().is_relative_to(data_root):
+            raise ValueError(f'Missing protected release data: {name}')
+    return [(str(data_root / name), str(Path(name).parent)) for name in FROZEN_DATA_FILES]
 
 
 def runtime_license_datas(root):
@@ -117,7 +123,7 @@ def validate_bundle(directory):
             raise ValueError(f'Expected one shared {name}: {found}')
     for folder in (*BUSINESS_FILES, str(Path(CORE).parent)):
         actual = {item.relative_to(internal).as_posix() for item in (internal / folder).rglob('*') if item.is_file()}
-        expected_files = {name for name in SOURCE_FILES if name.startswith(folder + '/')}
+        expected_files = {name for name in FROZEN_DATA_FILES if name.startswith(folder + '/')}
         if actual != expected_files:
             raise ValueError(f'Business release whitelist mismatch: {folder}')
     if not (internal / 'node_modules/playwright-core/package.json').is_file() or not (internal / 'node_modules/exceljs/package.json').is_file():
@@ -128,12 +134,12 @@ def validate_bundle(directory):
             raise ValueError(f'Unexpected separate node_modules: {relative}')
     for name in ('toolbox/node', 'toolbox/web'):
         actual = {item.relative_to(internal).as_posix() for item in (internal / name).rglob('*') if item.is_file()}
-        expected_files = {item for item in SOURCE_FILES if item.startswith(name + '/')}
+        expected_files = {item for item in FROZEN_DATA_FILES if item.startswith(name + '/')}
         if actual != expected_files:
             raise ValueError(f'Release assets mismatch: {name}')
     if not (directory / f'{APP_NAME}.exe').is_file():
         raise ValueError('Missing desktop executable')
-    for name in (*SOURCE_FILES, 'toolbox/release-info.json', 'playwright/driver/package/cli.js'):
+    for name in (*FROZEN_DATA_FILES, 'toolbox/release-info.json', 'playwright/driver/package/cli.js'):
         if not (internal / name).is_file():
             raise ValueError(f'Missing frozen runtime data: {name}')
     for name in ('node', 'ffmpeg', *RUNTIME_LICENSES):
@@ -141,4 +147,8 @@ def validate_bundle(directory):
             raise ValueError(f'Missing runtime license: {name}')
     if (internal / 'toolbox/tests').exists() or any(internal.rglob('.local-browsers')):
         raise ValueError('Development fixtures or downloaded browsers entered the release')
+    if any((internal / name).exists() for name in (CORE, 'toolbox/windows/protection')) or any(
+            item.suffix == '.map' for folder in ('toolbox/web', 'toolbox/node', *BUSINESS_FILES)
+            for item in (internal / folder).rglob('*') if item.is_file()):
+        raise ValueError('Raw protected source or development maps entered the release')
     return inventory(directory)

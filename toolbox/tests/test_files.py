@@ -1,4 +1,5 @@
 import errno
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,6 +45,84 @@ class ExportTests(unittest.TestCase):
 
     def assert_counts(self, result, exported=0, skipped=0, failed=0):
         self.assertEqual((result['exported'], result['skipped'], result['failed']), (exported, skipped, failed))
+
+    def test_export_location_starts_empty_and_selection_persists(self):
+        self.assertEqual(self.files.get_export_location(), {'path': None})
+        self.assertEqual(self.files.choose_export_location(), {'path': str(self.out), 'cancelled': False})
+        self.assertEqual(Files(self.store).get_export_location(), {'path': str(self.out)})
+        self.assertEqual(json.loads(self.store.paths.resolve('preferences.json').read_text('utf-8')),
+                         {'version': 1, 'exportDirectory': str(self.out)})
+        self.assertEqual(list(self.store.paths.root.glob('.preferences-*')), [])
+        self.assertEqual(list(self.out.iterdir()), [])  # Choosing never copies a business result.
+
+    def test_export_location_cancel_preserves_existing_preference(self):
+        self.files.choose_export_location()
+        before = self.store.paths.resolve('preferences.json').read_bytes()
+        self.files.window.create_file_dialog.return_value = None
+        self.assertEqual(self.files.choose_export_location(), {'cancelled': True})
+        self.assertEqual(self.store.paths.resolve('preferences.json').read_bytes(), before)
+
+    def test_export_location_rejects_internal_directory_and_keeps_setting(self):
+        self.files.choose_export_location()
+        for directory in (self.store.paths.root, self.store.paths.resolve('scratch')):
+            self.files.window.create_file_dialog.return_value = (str(directory),)
+            with self.assertRaises(ToolboxError):
+                self.files.choose_export_location()
+        self.assertEqual(self.files.get_export_location(), {'path': str(self.out)})
+
+    def test_export_location_atomic_failure_preserves_existing_setting(self):
+        self.files.choose_export_location()
+        before = self.store.paths.resolve('preferences.json').read_bytes()
+        with patch('toolbox.host.files.os.replace', side_effect=PermissionError(errno.EACCES, 'fixture busy')):
+            with self.assertRaises(ToolboxError):
+                self.files.choose_export_location()
+        self.assertEqual(self.store.paths.resolve('preferences.json').read_bytes(), before)
+        self.assertEqual(list(self.store.paths.root.glob('.preferences-*')), [])
+
+    def test_export_location_invalid_preferences_do_not_become_an_arbitrary_path(self):
+        preference = self.store.paths.resolve('preferences.json')
+        for value in ('{broken', json.dumps({'version': 2, 'exportDirectory': str(self.out)}),
+                      json.dumps({'version': 1, 'exportDirectory': str(self.store.paths.root)})):
+            preference.write_text(value, encoding='utf-8')
+            with self.assertRaises(ToolboxError):
+                self.files.get_export_location()
+        self.files.choose_export_location()  # Can repair a malformed setting by choosing again.
+        self.assertEqual(self.files.get_export_location(), {'path': str(self.out)})
+
+    def test_default_video_export_skips_picker_and_preserves_pairs_and_collision_names(self):
+        task = self.task()
+        artifact = self.artifact(task, caption='默认目录文案')
+        self.files.choose_export_location()
+        self.files.window.create_file_dialog.reset_mock()
+        self.assert_counts(self.files.export([artifact], task['id']), exported=1)
+        self.assert_counts(self.files.export([artifact], task['id']), exported=1)
+        self.files.window.create_file_dialog.assert_not_called()
+        videos = list(self.out.rglob('*.mp4'))
+        self.assertEqual(len(videos), 2)
+        self.assertEqual(len({video.name for video in videos}), 2)
+        for video in videos:
+            self.assertEqual(video.with_suffix('.txt').read_text('utf-8'), '默认目录文案')
+        self.assertEqual(self.store.artifact_path(artifact).read_bytes(), b'fixture-video')
+
+    def test_default_report_and_capture_export_only_set_save_dialog_directory(self):
+        self.files.choose_export_location()
+        task = self.task('top200')
+        artifact = self.artifact(task, '报告.xlsx', kind='excel')
+        self.files.window.create_file_dialog.return_value = None
+        self.assertTrue(self.files.export([artifact], task['id'])['cancelled'])
+        self.assertEqual(self.files.window.create_file_dialog.call_args.args, ('save',))
+        self.assertEqual(self.files.window.create_file_dialog.call_args.kwargs['directory'], str(self.out))
+        self.assertTrue(self.files.capture_export(self.capture_items())['cancelled'])
+        self.assertEqual(self.files.window.create_file_dialog.call_args.kwargs['directory'], str(self.out))
+        self.assertEqual(list(self.out.iterdir()), [])
+
+    def test_export_location_bridge_accepts_only_empty_payload(self):
+        from toolbox.host.bridge import Bridge
+        app = SimpleNamespace(window=SimpleNamespace(get_current_url=lambda: 'trusted'), files=self.files)
+        bridge = Bridge(app, 'trusted')
+        for action in ('storage.get_export_location', 'storage.choose_export_location'):
+            self.assertTrue(bridge.invoke(action, {})['ok'])
+            self.assertFalse(bridge.invoke(action, {'path': str(self.out)})['ok'])
 
     def test_single_report_uses_reference_name_and_atomic_confirmed_replace(self):
         task = self.task('top200')

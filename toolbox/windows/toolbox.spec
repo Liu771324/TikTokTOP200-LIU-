@@ -12,7 +12,7 @@ from layout import APP_NAME, source_datas, runtime_license_datas, core_imports, 
 node_modules = Path(os.environ['TOOLBOX_NODE_MODULES']).resolve()
 node_exe = Path(os.environ['TOOLBOX_NODE_EXE']).resolve()
 ffmpeg_exe = Path(os.environ['TOOLBOX_FFMPEG_EXE']).resolve()
-datas = source_datas(ROOT) + runtime_license_datas(ROOT) + [(str(node_modules), 'node_modules'),
+datas = source_datas(ROOT, os.environ.get('TOOLBOX_PROTECTED_SOURCE_ROOT')) + runtime_license_datas(ROOT) + [(str(node_modules), 'node_modules'),
     (str(node_exe), 'toolbox/runtime'), (str(ffmpeg_exe), 'toolbox/runtime'),
     (os.environ['TOOLBOX_NODE_LICENSE'], 'toolbox/runtime/licenses/node'),
     (os.environ['TOOLBOX_FFMPEG_LICENSE'], 'toolbox/runtime/licenses/ffmpeg'),
@@ -22,8 +22,8 @@ for line in (ROOT / 'toolbox/requirements.lock.txt').read_text(encoding='utf-8-s
     if '==' in line and not line.startswith('#'):
         datas += copy_metadata(line.split('==')[0])
 
-a = Analysis([str(WINDOWS / 'bootstrap.py')], pathex=[str(ROOT)], binaries=[], datas=datas,
-    hiddenimports=core_imports(ROOT) + ['webview.platforms.winforms', 'webview.platforms.edgechromium', 'pystray._win32'],
+a = Analysis([str(WINDOWS / 'bootstrap.py')], pathex=[str(ROOT), str(ROOT / '抖音视频下载器（免 Python 版）')], binaries=[], datas=datas,
+    hiddenimports=core_imports(ROOT) + ['douyin_downloader_core', 'webview.platforms.winforms', 'webview.platforms.edgechromium', 'pystray._win32'],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     excludes=['PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'tkinter', 'webview.platforms.android', 'webview.platforms.gtk', 'webview.platforms.cocoa'],
     noarchive=False, optimize=0)

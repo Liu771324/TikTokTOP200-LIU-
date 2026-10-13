@@ -13,6 +13,7 @@ FIELDS = {
     'capture.export': {'itemIds'}, 'artifacts.open': {'artifactId'}, 'artifacts.export': {'artifactIds', 'taskId'},
     'storage.get_usage': set(), 'storage.preview_delete': {'taskIds'}, 'storage.confirm_delete': {'token'},
     'storage.clean_cache': set(),
+    'storage.get_export_location': set(), 'storage.choose_export_location': set(),
     'storage.get_location': set(), 'storage.choose_location': set(), 'storage.clean_old_location': set(),
 }
 
@@ -109,6 +110,10 @@ class Bridge:
             return a.files.open(p['artifactId'])
         if action == 'artifacts.export':
             return a.files.export(p['artifactIds'], p.get('taskId'))
+        if action == 'storage.get_export_location':
+            return a.files.get_export_location()
+        if action == 'storage.choose_export_location':
+            return a.files.choose_export_location()
         if action == 'storage.get_usage':
             return a.store.usage()
         if action == 'storage.get_location':

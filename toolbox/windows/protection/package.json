@@ -1,0 +1,6 @@
+{
+  "name": "script-all-toolbox-build-protection",
+  "version": "0.1.0",
+  "private": true,
+  "devDependencies": {"javascript-obfuscator": "4.1.1"}
+}

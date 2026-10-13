@@ -672,6 +672,16 @@ async function storage() {
       await storage();
       notice(result.removed ? `已清理旧位置，释放 ${bytes(result.releasedBytes)}。` : "没有需要清理的旧位置。");
     }));
+  const exportLocation = await call("storage.get_export_location");
+  const exportPosition = panel("默认导出位置");
+  exportPosition.append(el("p", exportLocation.path || "尚未设置，导出时选择文件夹。"),
+    button("选择文件夹", async () => {
+      const result = await call("storage.choose_export_location");
+      if (result.cancelled) { notice("已取消选择默认导出位置。"); return; }
+      await storage();
+      notice("默认导出位置已保存。");
+    }),
+    el("p", "视频点击导出后保存到这里，按任务和商品归类并附带文案；报表保存窗口默认打开这里。内部视频继续统一去重，下载完成不会自动复制或生成备份。", "hint"));
   const box = panel("本机存储");
   const metrics = el("div", undefined, "metrics");
   for (const [key, title] of Object.entries({
@@ -717,7 +727,7 @@ async function storage() {
       "danger",
     ),
   );
-  content.replaceChildren(position, box, login);
+  content.replaceChildren(position, exportPosition, box, login);
 }
 async function poll() {
   try {

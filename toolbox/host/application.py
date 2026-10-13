@@ -27,6 +27,8 @@ ROOT = Path(__file__).resolve().parents[2]
 def load_core():
     if 'douyin_downloader_core' in sys.modules:
         return sys.modules['douyin_downloader_core']
+    if getattr(sys, 'frozen', False):
+        return importlib.import_module('douyin_downloader_core')
     spec = importlib.util.spec_from_file_location('douyin_downloader_core', ROOT / '抖音视频下载器（免 Python 版）/douyin_downloader_core.py')
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module

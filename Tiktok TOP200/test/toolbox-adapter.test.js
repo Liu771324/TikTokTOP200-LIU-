@@ -321,7 +321,7 @@ test('真实组合核心在假页面从第一页检查原始前200名，趋势/�
   }
   const page = { locator, getByRole: (role, options) => { actions.push(options.name); return locator(options.name); },
     waitForTimeout: async () => {},
-    evaluate: async fn => fn.toString().includes('const radios')
+    evaluate: async fn => fn.toString().includes('input[type=')
       ? [{ value: 'one', label: '近1天', checked: true, disabled: false, control: 'tab' }]
       : { headers: ['排名', '商品', '店铺名称'], rows: copy(rows), page: currentPage, total: 205, hasNext: false },
   };

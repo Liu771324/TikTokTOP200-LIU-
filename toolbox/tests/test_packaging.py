@@ -36,7 +36,7 @@ def source_fixture(root):
 
 def bundle_fixture(root):
     internal = root / '_internal'
-    for name in layout.SOURCE_FILES:
+    for name in layout.FROZEN_DATA_FILES:
         write(internal, name)
     for name in ('toolbox/runtime/node.exe', 'toolbox/runtime/ffmpeg.exe',
             'toolbox/runtime/licenses/node/LICENSE', 'toolbox/runtime/licenses/ffmpeg/COPYING.GPLv3',
@@ -64,11 +64,12 @@ class SourceLayoutTests(unittest.TestCase):
 
     def test_datas_preserve_relative_paths(self):
         datas = layout.source_datas(ROOT)
-        self.assertEqual(len(datas), len(layout.SOURCE_FILES))
-        for relative, (source, destination) in zip(layout.SOURCE_FILES, datas):
+        self.assertEqual(len(datas), len(layout.FROZEN_DATA_FILES))
+        for relative, (source, destination) in zip(layout.FROZEN_DATA_FILES, datas):
             self.assertEqual(Path(source), ROOT / relative)
             self.assertEqual(Path(destination), Path(relative).parent)
             self.assertFalse(Path(destination).is_absolute())
+        self.assertNotIn(layout.CORE, layout.FROZEN_DATA_FILES)
 
     def test_python_and_proxy_licenses_are_explicit_inputs(self):
         datas = layout.runtime_license_datas(ROOT)
@@ -181,7 +182,7 @@ class BundleTests(unittest.TestCase):
 
     def test_missing_assets_notices_executable_and_licenses_rejected(self):
         for name in ('ScriptAllToolbox.exe', '_internal/toolbox/tools.json',
-                '_internal/toolbox/THIRD_PARTY_NOTICES.md', '_internal/' + layout.CORE,
+                '_internal/toolbox/THIRD_PARTY_NOTICES.md',
                 '_internal/toolbox/release-info.json', '_internal/playwright/driver/package/cli.js',
                 '_internal/toolbox/runtime/licenses/node/LICENSE',
                 '_internal/toolbox/runtime/licenses/ffmpeg/COPYING.GPLv3',
@@ -328,7 +329,8 @@ class SpecTests(unittest.TestCase):
                 'PyInstaller.utils.hooks': hooks, 'layout': layout}), patch.dict('os.environ', environment), patch.object(sys, 'path', sys.path.copy()):
             exec(compile((WINDOWS / 'toolbox.spec').read_text(encoding='utf-8'), str(WINDOWS / 'toolbox.spec'), 'exec'), namespace)
         args = captured['analysis']
-        self.assertEqual(args['pathex'], [str(ROOT)])
+        self.assertEqual(args['pathex'], [str(ROOT), str(ROOT / Path(layout.CORE).parent)])
+        self.assertIn('douyin_downloader_core', args['hiddenimports'])
         for hidden in ('playwright.sync_api', 'webview.platforms.winforms', 'webview.platforms.edgechromium', 'pystray._win32'):
             self.assertIn(hidden, args['hiddenimports'])
         self.assertEqual(sum(destination == 'node_modules' for source, destination in args['datas']), 1)
@@ -357,6 +359,10 @@ class MockBuildTests(unittest.TestCase):
         for name in ('requirements.lock.txt', 'package-lock.json'):
             shutil.copy2(ROOT / 'toolbox' / name, self.root / 'toolbox' / name)
         shutil.copy2(WINDOWS / 'requirements-build.lock.txt', self.windows / 'requirements-build.lock.txt')
+        for name in ('package.json', 'package-lock.json', 'protect.cjs'):
+            file = self.windows / 'protection' / name
+            file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(WINDOWS / 'protection' / name, file)
         self.venv = self.root / 'toolbox/build/venv'
         self.python = write(self.venv, 'Scripts/python.exe')
         self.node = write(self.root, '输入 node/node.exe')
@@ -412,6 +418,8 @@ class MockBuildTests(unittest.TestCase):
             write(output, 'ScriptAllToolbox-0.1.0-windows-x64.exe', 'setup fixture')
             return None
         if command[1:3] == ['-m', 'pip'] or 'ci' in command:
+            return None
+        if len(command) > 1 and Path(command[1]).name == 'protect.cjs':
             return None
         self.fail('Unexpected simulated command: ' + str(command))
 

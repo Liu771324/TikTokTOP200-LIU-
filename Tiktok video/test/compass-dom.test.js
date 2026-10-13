@@ -298,7 +298,7 @@ test('hover titles are bound to the matching cover, never a late unrelated toolt
   const evaluate = page.evaluate;
   let tooltipReads = 0;
   page.evaluate = async (operation, argument) => {
-    if (typeof argument !== 'string' || !operation.toString().includes('canonical')) return evaluate(operation, argument);
+    if (typeof argument !== 'string' || !operation.toString().includes('videoName-')) return evaluate(operation, argument);
     tooltipReads += 1;
     const tooltip = (cover, title) => node('', { img: [{ currentSrc: cover }], '[class*=videoName-]': node(title) });
     const popovers = [tooltip('https://fixture.invalid/other', '其他商品迟到标题')];
@@ -314,7 +314,7 @@ test('hover title stays empty when no tooltip has this card cover', async () => 
   let tooltipReads = 0, boundaries = 0;
   const evaluate = page.evaluate;
   page.evaluate = async (operation, argument) => {
-    if (typeof argument !== 'string' || !operation.toString().includes('canonical')) return evaluate(operation, argument);
+    if (typeof argument !== 'string' || !operation.toString().includes('videoName-')) return evaluate(operation, argument);
     tooltipReads += 1;
     return vm.runInNewContext(`(${operation.toString()})(argument)`, { URL, argument, document: {
       querySelectorAll: () => [node('', { img: [{ currentSrc: 'https://fixture.invalid/other' }], '[class*=videoName-]': node('其他标题') })] } });

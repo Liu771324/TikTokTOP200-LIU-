@@ -14,6 +14,8 @@ async function mockApi(fixtures) {
   window.fixtureDetails = false;
   window.fixtureExportMode = 'completed';
   window.fixtureLocation = {path:'C:\\用户数据\\ScriptAllToolbox', freeBytes:20 * 1024 ** 3, totalBytes:100 * 1024 ** 3, pending:false, error:'迁移未完成，仍使用原数据。请检查目标空间和文件占用，再退出重开重试。'};
+  window.fixtureExportLocation = {path:null};
+  window.fixtureExportLocationMode = 'cancelled';
   window.fixtureLocationMode = 'cancelled';
   window.fixtureCleanMode = 'removed';
   const tasks = descriptors.map((tool, index) => ({id: String(index + 1).repeat(32), toolId: tool.toolId,
@@ -33,6 +35,14 @@ async function mockApi(fixtures) {
   window.pywebview = {api: {invoke: async (action, p) => {
     window.fixtureCalls.push({action, p});
     let data = {};
+    if (action === 'storage.get_export_location') data = window.fixtureExportLocation;
+    if (action === 'storage.choose_export_location') {
+      if (window.fixtureExportLocationMode === 'cancelled') data = {cancelled:true};
+      else {
+        window.fixtureExportLocation = {path:'D:\\下载结果'};
+        data = {...window.fixtureExportLocation,cancelled:false};
+      }
+    }
     if (action === 'storage.get_location') data = window.fixtureLocation;
     if (action === 'storage.choose_location') {
       if (window.fixtureLocationMode === 'blocked') return {ok:false,error:{message:'请先结束活动任务和读取操作后再更改数据位置。'}};
@@ -165,6 +175,17 @@ async function mockApi(fixtures) {
     await page.locator('#work-nav').getByRole('button',{name:'存储管理',exact:true}).click();
     await page.getByRole('button',{name:'清理旧位置',exact:true}).click();
     await page.locator('#notice').getByText('没有需要清理的旧位置。',{exact:true}).waitFor();
+    await page.getByText('默认导出位置',{exact:true}).waitFor();
+    await page.getByText('尚未设置，导出时选择文件夹。',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'选择文件夹',exact:true}).click();
+    await page.locator('#notice').getByText('已取消选择默认导出位置。',{exact:true}).waitFor();
+    await page.evaluate(() => {window.fixtureExportLocationMode='selected';});
+    await page.getByRole('button',{name:'选择文件夹',exact:true}).click();
+    await page.getByText('D:\\下载结果',{exact:true}).waitFor();
+    await page.locator('#notice').getByText('默认导出位置已保存。',{exact:true}).waitFor();
+    const exportLocationCalls = await page.evaluate(() => window.fixtureCalls.filter(c =>
+      ['storage.get_export_location','storage.choose_export_location'].includes(c.action)));
+    assert.ok(exportLocationCalls.length); assert.ok(exportLocationCalls.every(c => Object.keys(c.p).length === 0));
     const locationCalls = await page.evaluate(() => window.fixtureCalls.filter(c =>
       ['storage.get_location','storage.choose_location','storage.clean_old_location'].includes(c.action)));
     assert.ok(locationCalls.length); assert.ok(locationCalls.every(c => Object.keys(c.p).length === 0));
@@ -294,7 +315,7 @@ async function mockApi(fixtures) {
     console.log(JSON.stringify({forms:3, categoryObjectPreserved:true, rankingNames:true,
       periodLabel:true, amountUnitYuan:true, resultSections:3, resultPagination:true, artifactPagination:true,
       selectionAcrossPages:true, logPagination:true, captureExportFeedback:['completed','cancelled','failed'],
-      storageMigrationFailureVisible:true, storageLocationDisplay:true, storageLocationSystemPicker:true, storageMigrationRestartHint:true, storageOldLocationCleanup:true, failureHeaders:true, automaticProgressWithoutMessage:true, automaticProgressEvents:true, missingCompassCaptionHint:true, publicCaptionHintAbsent:true, topRightDetailClose:true, stickyCloseReachable:true, detailSelectionClearedOnClose:true,
+      defaultExportLocation:true, defaultExportLocationEmptyPayload:true, defaultExportLocationCancel:true, storageMigrationFailureVisible:true, storageLocationDisplay:true, storageLocationSystemPicker:true, storageMigrationRestartHint:true, storageOldLocationCleanup:true, failureHeaders:true, automaticProgressWithoutMessage:true, automaticProgressEvents:true, missingCompassCaptionHint:true, publicCaptionHintAbsent:true, topRightDetailClose:true, stickyCloseReachable:true, detailSelectionClearedOnClose:true,
       viewport:'1280x720', highDpi:1.5, pageErrors:errors.length}));
   } finally { await browser.close(); }
 })().catch(error => {console.error(error);process.exitCode=1;});

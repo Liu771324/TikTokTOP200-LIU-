@@ -114,6 +114,9 @@ def main(argv=None):
     build_lock = WINDOWS / 'requirements-build.lock.txt'
     environment = os.environ.copy()
     environment.update(PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD='1', PYTHONUTF8='1', PYTHONNOUSERSITE='1')
+    environment.update(NPM_CONFIG_CACHE=str(ROOT / 'toolbox/build/npm-cache'),
+                       PIP_CACHE_DIR=str(ROOT / 'toolbox/build/pip-cache'),
+                       PYINSTALLER_CONFIG_DIR=str(ROOT / 'toolbox/build/pyinstaller-cache'))
     probe = json.loads(run([python, '-c',
         'import json,sys; print(json.dumps({"version":list(sys.version_info[:3]),"x64":sys.maxsize>2**32,"prefix":sys.prefix,"base":sys.base_prefix}))'],
         capture=True, env=environment))
@@ -130,12 +133,18 @@ def main(argv=None):
     for name in ('package.json', 'package-lock.json'):
         shutil.copy2(ROOT / 'toolbox' / name, node_project / name)
     run([node, npm_cli, 'ci', '--omit=dev', '--no-audit', '--no-fund'], cwd=node_project, env=environment)
+    try:
+        from .protection import prepare
+    except ImportError:
+        from protection import prepare
+    protected_root, protection = prepare(ROOT, work, node, npm_cli, environment, run)
     commit = run(['git', 'rev-parse', 'HEAD'], capture=True)
     dirty = bool(run(['git', 'status', '--porcelain', '--untracked-files=all'], capture=True))
     inputs = {'node': node, 'ffmpeg': ffmpeg, 'innoCompiler': iscc, 'webview2Bootstrapper': bootstrapper,
         'nodeLicense': node_license, 'ffmpegLicense': ffmpeg_license}
     build_info = {'version': options.version, 'sourceCommit': commit, 'sourceDirty': dirty,
-        'builtAt': datetime.now(timezone.utc).isoformat(), 'runtimeVersions': {**RUNTIMES, 'node': node_version, 'ffmpeg': ffmpeg_version},
+        'builtAt': datetime.now(timezone.utc).isoformat(), 'protection': protection,
+        'runtimeVersions': {**RUNTIMES, 'node': node_version, 'ffmpeg': ffmpeg_version},
         'pythonDependencies': actual,
         'nodeDependencies': json.loads((node_project / 'package-lock.json').read_text(encoding='utf-8'))['packages'],
         'inputs': {name: {'filename': file.name, 'size': file.stat().st_size, 'sha256': sha256(file)} for name, file in inputs.items()},
@@ -150,6 +159,7 @@ def main(argv=None):
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
     environment.update(TOOLBOX_NODE_MODULES=str(node_project / 'node_modules'), TOOLBOX_NODE_EXE=str(node),
+        TOOLBOX_PROTECTED_SOURCE_ROOT=str(protected_root),
         TOOLBOX_FFMPEG_EXE=str(ffmpeg), TOOLBOX_VERSION_FILE=str(version_file), TOOLBOX_BUILD_INFO=str(info_path),
         TOOLBOX_NODE_LICENSE=str(bundled_node_license), TOOLBOX_FFMPEG_LICENSE=str(bundled_ffmpeg_license))
     run([python, '-m', 'PyInstaller', '--distpath', release / 'app', '--workpath', work / 'freeze', WINDOWS / 'toolbox.spec'], env=environment)

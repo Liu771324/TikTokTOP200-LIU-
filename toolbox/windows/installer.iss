@@ -93,7 +93,7 @@ begin
   AppRoot := Lowercase(AddBackslash(ExpandFileName(WizardDirValue)));
   Result := Pos(DataRoot, AppRoot) = 1;
   // Also protect moved data roots without depending on a versioned JSON parser.
-  CheckRoot := ExcludeTrailingBackslash(AppRoot);
+  CheckRoot := RemoveBackslashUnlessRoot(AppRoot);
   while not Result do begin
     if FileExists(AddBackslash(CheckRoot) + 'toolbox.sqlite3') and
        DirExists(AddBackslash(CheckRoot) + 'tasks') and
