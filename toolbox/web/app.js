@@ -652,8 +652,27 @@ async function copy(field) {
   );
 }
 async function storage() {
-  const usage = await call("storage.get_usage");
-  const location = await call("storage.get_location");
+  const loading = empty("正在统计存储占用", "请稍候，正在读取本机存储信息……");
+  loading.setAttribute("role", "status");
+  loading.setAttribute("aria-live", "polite");
+  loading.setAttribute("aria-busy", "true");
+  const spinner = el("div", undefined, "loading-spinner");
+  spinner.setAttribute("aria-hidden", "true");
+  loading.prepend(spinner);
+  content.replaceChildren(loading);
+  let usage, location, exportLocation;
+  try {
+    [usage, location, exportLocation] = await Promise.all([
+      call("storage.get_usage"),
+      call("storage.get_location"),
+      call("storage.get_export_location"),
+    ]);
+  } catch (error) {
+    if (state.view !== "storage" || !content.contains(loading)) return;
+    content.replaceChildren(empty("存储信息读取失败", "请点击右上角“刷新”重试。"));
+    throw error;
+  }
+  if (state.view !== "storage" || !content.contains(loading)) return;
   const position = panel("数据保存位置");
   position.append(el("p", location.path), el("p", `磁盘剩余 ${bytes(location.freeBytes)} / 共 ${bytes(location.totalBytes)}`, "hint"),
     button("更改数据位置", async () => {
@@ -672,7 +691,6 @@ async function storage() {
       await storage();
       notice(result.removed ? `已清理旧位置，释放 ${bytes(result.releasedBytes)}。` : "没有需要清理的旧位置。");
     }));
-  const exportLocation = await call("storage.get_export_location");
   const exportPosition = panel("默认导出位置");
   exportPosition.append(el("p", exportLocation.path || "尚未设置，导出时选择文件夹。"),
     button("选择文件夹", async () => {
