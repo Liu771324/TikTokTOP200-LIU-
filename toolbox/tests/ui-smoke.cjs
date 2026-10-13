@@ -13,6 +13,9 @@ async function mockApi(fixtures) {
   window.fixtureCalls = [];
   window.fixtureDetails = false;
   window.fixtureExportMode = 'completed';
+  window.fixtureLocation = {path:'C:\\用户数据\\ScriptAllToolbox', freeBytes:20 * 1024 ** 3, totalBytes:100 * 1024 ** 3, pending:false, error:'迁移未完成，仍使用原数据。请检查目标空间和文件占用，再退出重开重试。'};
+  window.fixtureLocationMode = 'cancelled';
+  window.fixtureCleanMode = 'removed';
   const tasks = descriptors.map((tool, index) => ({id: String(index + 1).repeat(32), toolId: tool.toolId,
     createdAt:'2026-10-12T01:00:00.000Z', state:'completed_with_errors', progress:{message:'本地模拟结果'},
     capabilities:{supportsPause:false, supportsResume:false, supportsRetryFailed:false}}));
@@ -30,6 +33,19 @@ async function mockApi(fixtures) {
   window.pywebview = {api: {invoke: async (action, p) => {
     window.fixtureCalls.push({action, p});
     let data = {};
+    if (action === 'storage.get_location') data = window.fixtureLocation;
+    if (action === 'storage.choose_location') {
+      if (window.fixtureLocationMode === 'blocked') return {ok:false,error:{message:'请先结束活动任务和读取操作后再更改数据位置。'}};
+      if (window.fixtureLocationMode === 'cancelled') data = {cancelled:true};
+      else {
+        window.fixtureLocation = {...window.fixtureLocation,pending:true,requestedPath:'D:\\电商数据\\ScriptAllToolbox'};
+        data = {restartRequired:true,path:window.fixtureLocation.requestedPath};
+      }
+    }
+    if (action === 'storage.clean_old_location') {
+      data = {removed:window.fixtureCleanMode === 'removed',releasedBytes:window.fixtureCleanMode === 'removed' ? 1024 : 0};
+      delete window.fixtureLocation.previousPath;
+    }
     if (action === 'app.get_state') data = {tools: descriptors, browser: {edgeAvailable: true}};
     if (action === 'tasks.list') data = {items: window.fixtureDetails ? tasks : [], total: window.fixtureDetails ? tasks.length : 0};
     if (action === 'tasks.get') data = tasks.find(task => task.id === p.taskId);
@@ -123,6 +139,35 @@ async function mockApi(fixtures) {
     }
     const captureExport = await page.evaluate(() => window.fixtureCalls.filter(c => c.action === 'capture.export').at(-1).p);
     assert.deepEqual(captureExport.itemIds, ['9'.repeat(32)]);
+    await page.locator('#work-nav').getByRole('button',{name:'存储管理',exact:true}).click();
+    await page.getByText('C:\\用户数据\\ScriptAllToolbox',{exact:true}).waitFor();
+    await page.getByText('磁盘剩余 20.00 GB / 共 100.00 GB',{exact:true}).waitFor();
+    await page.getByText('迁移未完成，仍使用原数据。请检查目标空间和文件占用，再退出重开重试。',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'清理旧位置',exact:true}).count(),0);
+    await page.getByRole('button',{name:'更改数据位置',exact:true}).click();
+    await page.locator('#notice').getByText('已取消更改数据位置。',{exact:true}).waitFor();
+    await page.evaluate(() => {window.fixtureLocationMode='blocked';});
+    await page.getByRole('button',{name:'更改数据位置',exact:true}).click();
+    await page.locator('#notice').getByText('请先结束活动任务和读取操作后再更改数据位置。',{exact:true}).waitFor();
+    await page.evaluate(() => {window.fixtureLocationMode='restart';});
+    await page.getByRole('button',{name:'更改数据位置',exact:true}).click();
+    await page.locator('#notice').getByText('数据位置已选择。请退出软件，再次打开完成复制校验迁移。',{exact:true}).waitFor();
+    await page.getByText('待迁移位置：D:\\电商数据\\ScriptAllToolbox。请退出软件后再次打开。',{exact:true}).waitFor();
+    await page.getByText('C:\\用户数据\\ScriptAllToolbox',{exact:true}).waitFor();
+    await page.evaluate(() => {window.fixtureLocation={...window.fixtureLocation,path:window.fixtureLocation.requestedPath,
+      previousPath:window.fixtureLocation.path,pending:false};});
+    await page.locator('#work-nav').getByRole('button',{name:'存储管理',exact:true}).click();
+    await page.getByText('D:\\电商数据\\ScriptAllToolbox',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'清理旧位置',exact:true}).click();
+    await page.locator('#notice').getByText('已清理旧位置，释放 1.0 KB。',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'清理旧位置',exact:true}).count(),0);
+    await page.evaluate(() => {window.fixtureCleanMode='none';window.fixtureLocation.previousPath='C:\\旧数据';});
+    await page.locator('#work-nav').getByRole('button',{name:'存储管理',exact:true}).click();
+    await page.getByRole('button',{name:'清理旧位置',exact:true}).click();
+    await page.locator('#notice').getByText('没有需要清理的旧位置。',{exact:true}).waitFor();
+    const locationCalls = await page.evaluate(() => window.fixtureCalls.filter(c =>
+      ['storage.get_location','storage.choose_location','storage.clean_old_location'].includes(c.action)));
+    assert.ok(locationCalls.length); assert.ok(locationCalls.every(c => Object.keys(c.p).length === 0));
     await page.evaluate(() => {window.fixtureDetails=true;window.fixtureExportMode='completed';});
     await page.locator('#work-nav').getByRole('button', {name:'任务中心',exact:true}).click();
     const autoRow = page.locator('[data-task-id="'+ '3'.repeat(32) +'"]');
@@ -249,7 +294,7 @@ async function mockApi(fixtures) {
     console.log(JSON.stringify({forms:3, categoryObjectPreserved:true, rankingNames:true,
       periodLabel:true, amountUnitYuan:true, resultSections:3, resultPagination:true, artifactPagination:true,
       selectionAcrossPages:true, logPagination:true, captureExportFeedback:['completed','cancelled','failed'],
-      failureHeaders:true, automaticProgressWithoutMessage:true, automaticProgressEvents:true, missingCompassCaptionHint:true, publicCaptionHintAbsent:true, topRightDetailClose:true, stickyCloseReachable:true, detailSelectionClearedOnClose:true,
+      storageMigrationFailureVisible:true, storageLocationDisplay:true, storageLocationSystemPicker:true, storageMigrationRestartHint:true, storageOldLocationCleanup:true, failureHeaders:true, automaticProgressWithoutMessage:true, automaticProgressEvents:true, missingCompassCaptionHint:true, publicCaptionHintAbsent:true, topRightDetailClose:true, stickyCloseReachable:true, detailSelectionClearedOnClose:true,
       viewport:'1280x720', highDpi:1.5, pageErrors:errors.length}));
   } finally { await browser.close(); }
 })().catch(error => {console.error(error);process.exitCode=1;});

@@ -13,6 +13,7 @@ FIELDS = {
     'capture.export': {'itemIds'}, 'artifacts.open': {'artifactId'}, 'artifacts.export': {'artifactIds', 'taskId'},
     'storage.get_usage': set(), 'storage.preview_delete': {'taskIds'}, 'storage.confirm_delete': {'token'},
     'storage.clean_cache': set(),
+    'storage.get_location': set(), 'storage.choose_location': set(), 'storage.clean_old_location': set(),
 }
 
 
@@ -110,6 +111,20 @@ class Bridge:
             return a.files.export(p['artifactIds'], p.get('taskId'))
         if action == 'storage.get_usage':
             return a.store.usage()
+        if action == 'storage.get_location':
+            return a.location.status()
+        if action == 'storage.choose_location':
+            return a.choose_data_location()
+        if action == 'storage.clean_old_location':
+            with a.scheduler._lock, a.operations._lock, a.store._files_lock:
+                from .state import ACTIVE
+                if a.scheduler._runs or a.operations._runs or any(a.store.list_tasks(state=s, limit=1)['total'] for s in ACTIVE):
+                    raise ToolboxError('BROWSER_BUSY', '请先结束任务和页面读取，再清理旧位置。')
+                if not a.location.status().get('previousPath'):
+                    return {'removed': False, 'releasedBytes': 0}
+                if not a.window.create_confirmation_dialog('清理旧位置', '已在新位置确认任务、视频和登录可用？确定后将清理迁移时保留的旧副本。'):
+                    return {'removed': False, 'releasedBytes': 0}
+                return a.location.clean_previous()
         if action == 'storage.preview_delete':
             return a.store.preview_delete(p['taskIds'])
         if action == 'storage.confirm_delete':

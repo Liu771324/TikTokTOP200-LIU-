@@ -501,6 +501,11 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('if DataDirectoryConflict then begin', prepare)
         self.assertLess(prepare.index('if DataDirectoryConflict then'), prepare.index('if HasWebView2 then exit;'))
 
+    def test_moved_data_directory_and_its_children_are_protected(self):
+        guard = self.active[self.active.index('function DataDirectoryConflict:'):self.active.index('function NextButtonClick(')]
+        for token in ("'toolbox.sqlite3'", "'tasks'", "'media'", 'ParentRoot := ExtractFileDir(CheckRoot)', 'CheckRoot := ParentRoot'):
+            self.assertIn(token, guard)
+
     def test_webview_detection_skip_and_non_elevated_bootstrapper(self):
         self.assertIn('{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', self.active)
         for hive in ('HKCU32', 'HKCU64', 'HKLM32', 'HKLM64'):

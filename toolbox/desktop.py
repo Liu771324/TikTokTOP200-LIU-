@@ -12,6 +12,8 @@ from .host.application import Application, ROOT
 from .host.bridge import Bridge
 from .host.instance import SingleInstance
 from .host.paths import DataPaths
+from .host.location import DataLocation
+from .host.errors import ToolboxError
 from .host.static import StaticServer
 from .host.processes import contain_current_process
 
@@ -62,14 +64,40 @@ def main(acceptance_runner=None):
         if result.returncode:
             raise SystemExit(result.returncode)
         return
-    paths = DataPaths(Path(options.smoke_data_root)) if options.smoke else DataPaths.default()
-    instance = SingleInstance(paths.root)
+    location = None if options.smoke else DataLocation(forbidden=(ROOT, Path(sys.executable).parent))
+    # Keep the production identity stable across data moves and compatible with 0.1.1.
+    identity = Path(options.smoke_data_root) if options.smoke else location.settings
+    instance = SingleInstance(identity)
+    legacy_instance = None
     if not instance.primary:
         instance.close()
+        return
+    if location:
+        legacy_instance = SingleInstance(location.legacy)
+        if not legacy_instance.primary:
+            legacy_instance.close()
+            instance.close()
+            return
+    try:
+        if location:
+            try:
+                location.migrate_pending()
+            except (OSError, ToolboxError):
+                location.record_failure()
+            paths = DataPaths(location.current())
+        else:
+            paths = DataPaths(Path(options.smoke_data_root))
+    except (OSError, ToolboxError):
+        ctypes.windll.user32.MessageBoxW(None, '数据位置不可用或配置无法读取。请恢复原数据磁盘后重试；软件不会创建空库替代原数据。', '电商工具箱', 0x10)
+        instance.close()
+        if legacy_instance:
+            legacy_instance.close()
         return
     if not webview2_available():
         ctypes.windll.user32.MessageBoxW(None, '未找到 Microsoft Edge WebView2 Runtime。请从微软官网下载并安装 WebView2 运行时后重试。', '电商工具箱', 0x10)
         instance.close()
+        if legacy_instance:
+            legacy_instance.close()
         return
     import pystray
     import webview
@@ -179,6 +207,8 @@ def main(acceptance_runner=None):
             app.shutdown()
         static.close()
         instance.close()
+        if legacy_instance:
+            legacy_instance.close()
 
 
 if __name__ == '__main__':

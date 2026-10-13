@@ -87,11 +87,24 @@ begin
 end;
 
 function DataDirectoryConflict: Boolean;
-var DataRoot, AppRoot: String;
+var DataRoot, AppRoot, CheckRoot, ParentRoot: String;
 begin
   DataRoot := Lowercase(AddBackslash(ExpandConstant('{localappdata}\ScriptAllToolbox')));
   AppRoot := Lowercase(AddBackslash(ExpandFileName(WizardDirValue)));
   Result := Pos(DataRoot, AppRoot) = 1;
+  // Also protect moved data roots without depending on a versioned JSON parser.
+  CheckRoot := ExcludeTrailingBackslash(AppRoot);
+  while not Result do begin
+    if FileExists(AddBackslash(CheckRoot) + 'toolbox.sqlite3') and
+       DirExists(AddBackslash(CheckRoot) + 'tasks') and
+       DirExists(AddBackslash(CheckRoot) + 'media') then begin
+      Result := True;
+      exit;
+    end;
+    ParentRoot := ExtractFileDir(CheckRoot);
+    if (ParentRoot = '') or (ParentRoot = CheckRoot) then exit;
+    CheckRoot := ParentRoot;
+  end;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;

@@ -653,6 +653,25 @@ async function copy(field) {
 }
 async function storage() {
   const usage = await call("storage.get_usage");
+  const location = await call("storage.get_location");
+  const position = panel("数据保存位置");
+  position.append(el("p", location.path), el("p", `磁盘剩余 ${bytes(location.freeBytes)} / 共 ${bytes(location.totalBytes)}`, "hint"),
+    button("更改数据位置", async () => {
+      const result = await call("storage.choose_location");
+      if (result.cancelled) { notice("已取消更改数据位置。"); return; }
+      await storage();
+      if (result.restartRequired) notice("数据位置已选择。请退出软件，再次打开完成复制校验迁移。");
+    }),
+    el("p", "在系统窗口选择文件夹，工具箱会使用其下的 ScriptAllToolbox 数据目录。完成选择后退出软件，再次打开完成复制校验迁移；迁移成功后可在此清理旧位置。", "hint"),
+    el("p", "更改前请先结束运行或暂停的任务，并等待页面读取操作完成。", "hint"));
+  if (location.error) position.append(el("p", location.error, "hint"));
+  if (location.pending) position.append(el("p", `待迁移位置：${location.requestedPath || "已选择的新位置"}。请退出软件后再次打开。`, "hint"));
+  if (location.previousPath) position.append(el("p", `旧位置：${location.previousPath}`, "hint"),
+    button("清理旧位置", async () => {
+      const result = await call("storage.clean_old_location");
+      await storage();
+      notice(result.removed ? `已清理旧位置，释放 ${bytes(result.releasedBytes)}。` : "没有需要清理的旧位置。");
+    }));
   const box = panel("本机存储");
   const metrics = el("div", undefined, "metrics");
   for (const [key, title] of Object.entries({
@@ -698,7 +717,7 @@ async function storage() {
       "danger",
     ),
   );
-  content.replaceChildren(box, login);
+  content.replaceChildren(position, box, login);
 }
 async function poll() {
   try {

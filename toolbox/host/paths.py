@@ -42,10 +42,8 @@ class DataPaths:
 
     @classmethod
     def default(cls):
-        base = os.environ.get("LOCALAPPDATA")
-        if not base:
-            raise ToolboxError("INVALID_PARAMETERS", "无法找到当前用户的本地数据目录。")
-        return cls(Path(base) / "ScriptAllToolbox")
+        from .location import DataLocation
+        return cls(DataLocation().current())
 
     def initialize(self):
         self.root.mkdir(parents=True, exist_ok=True)
