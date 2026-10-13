@@ -373,3 +373,9 @@ link_kind：public_page、temporary_media、unavailable。无公开视频地址�
 - 自动采集的媒体复用按任务引用保存文案状态；引用存在不代表本次新建文件，文案缺失须明确显示。平台播放器的`currentSrc`若实际指向罗盘HTML页面且媒体error=4，应返回`MEDIA_UNAVAILABLE`，不得登记成下载成功或把页面地址当视频链接。
 - 复制标题可处理无公开链接的会话条目；复制公开链接仅统计实际可用地址，无地址项返回unavailable计数。非法分享链接按输入校验拒绝。该约定已有真实最小范围证据，详细计数与限制见EXECUTION最新记录。
 - 本次版本更新记录当前实现状态及上述验收语义；NDJSON、状态机与共享引用约定继续按本文执行。最终冻结包、干净目标环境、清理和Git交付仍需独立通过门槛。
+
+## 0.1.2：数据位置与默认导出位置
+
+新增无参桥接storage.get_location、storage.choose_location、storage.clean_old_location；当前目录/剩余空间/待迁移/旧副本状态仅用于界面展示，路径选择通过系统目录对话框。迁移在下次启动且数据库/浏览器启动前完成复制与校验，最后切换小配置。已配置目录缺数据库时拒绝启动，不静默新建空库；旧副本清理前核验当前索引和结果，活动任务/读取时拒绝更改或清理。
+
+storage.get_export_location、storage.choose_export_location同样无参。配置位于数据根preferences.json，随迁移保留；内部视频去重路径不变，指定的外部位置只用于默认导出。单报告和待选列表仍使用保存对话框，默认打开所选目录。具体字段与取消语义见TOOLBOX_EXPORT_LOCATION.md。
