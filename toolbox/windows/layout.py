@@ -25,6 +25,7 @@ WEB_FILES = ('index.html', 'app.js', 'style.css')
 SOURCE_FILES = tuple(f'{directory}/{name}' for directory, names in BUSINESS_FILES.items() for name in names) + tuple(
     f'toolbox/node/{name}' for name in NODE_FILES) + tuple(f'toolbox/web/{name}' for name in WEB_FILES) + (
         'toolbox/tools.json', CORE, 'toolbox/THIRD_PARTY_NOTICES.md', '抖音视频下载器（免 Python 版）/THIRD_PARTY_NOTICES.md')
+RUNTIME_LICENSES = ('python', 'proxy_tools')
 REQUIRE = re.compile(r"\brequire\s*\(\s*['\"]([^'\"]+)['\"]\s*\)")
 
 
@@ -61,6 +62,17 @@ def validate_sources(root):
 def source_datas(root):
     validate_sources(root)
     return [(str(Path(root) / name), str(Path(name).parent)) for name in SOURCE_FILES]
+
+
+def runtime_license_datas(root):
+    root = Path(root).resolve()
+    datas = []
+    for component in RUNTIME_LICENSES:
+        file = root / 'toolbox/windows/licenses' / component / 'LICENSE.txt'
+        if not file.is_file() or not file.resolve().is_relative_to(root):
+            raise ValueError(f'Missing runtime license source: {component}')
+        datas.append((str(file), f'toolbox/runtime/licenses/{component}'))
+    return datas
 
 
 def core_imports(root):
@@ -124,7 +136,7 @@ def validate_bundle(directory):
     for name in (*SOURCE_FILES, 'toolbox/release-info.json', 'playwright/driver/package/cli.js'):
         if not (internal / name).is_file():
             raise ValueError(f'Missing frozen runtime data: {name}')
-    for name in ('node', 'ffmpeg'):
+    for name in ('node', 'ffmpeg', *RUNTIME_LICENSES):
         if not any(item.is_file() for item in (internal / 'toolbox/runtime/licenses' / name).rglob('*')):
             raise ValueError(f'Missing runtime license: {name}')
     if (internal / 'toolbox/tests').exists() or any(internal.rglob('.local-browsers')):

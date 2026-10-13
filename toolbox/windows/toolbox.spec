@@ -7,12 +7,12 @@ from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 WINDOWS = Path(SPECPATH).resolve()
 ROOT = WINDOWS.parents[1]
 sys.path.insert(0, str(WINDOWS))
-from layout import APP_NAME, source_datas, core_imports, omit_extra_runtime
+from layout import APP_NAME, source_datas, runtime_license_datas, core_imports, omit_extra_runtime
 
 node_modules = Path(os.environ['TOOLBOX_NODE_MODULES']).resolve()
 node_exe = Path(os.environ['TOOLBOX_NODE_EXE']).resolve()
 ffmpeg_exe = Path(os.environ['TOOLBOX_FFMPEG_EXE']).resolve()
-datas = source_datas(ROOT) + [(str(node_modules), 'node_modules'),
+datas = source_datas(ROOT) + runtime_license_datas(ROOT) + [(str(node_modules), 'node_modules'),
     (str(node_exe), 'toolbox/runtime'), (str(ffmpeg_exe), 'toolbox/runtime'),
     (os.environ['TOOLBOX_NODE_LICENSE'], 'toolbox/runtime/licenses/node'),
     (os.environ['TOOLBOX_FFMPEG_LICENSE'], 'toolbox/runtime/licenses/ffmpeg'),

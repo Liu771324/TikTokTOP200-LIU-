@@ -40,6 +40,7 @@ def bundle_fixture(root):
         write(internal, name)
     for name in ('toolbox/runtime/node.exe', 'toolbox/runtime/ffmpeg.exe',
             'toolbox/runtime/licenses/node/LICENSE', 'toolbox/runtime/licenses/ffmpeg/COPYING.GPLv3',
+            'toolbox/runtime/licenses/python/LICENSE.txt', 'toolbox/runtime/licenses/proxy_tools/LICENSE.txt',
             'toolbox/release-info.json', 'node_modules/playwright-core/package.json',
             'node_modules/exceljs/package.json', 'playwright/driver/package/cli.js'):
         write(internal, name)
@@ -68,6 +69,22 @@ class SourceLayoutTests(unittest.TestCase):
             self.assertEqual(Path(source), ROOT / relative)
             self.assertEqual(Path(destination), Path(relative).parent)
             self.assertFalse(Path(destination).is_absolute())
+
+    def test_python_and_proxy_licenses_are_explicit_inputs(self):
+        datas = layout.runtime_license_datas(ROOT)
+        self.assertEqual(len(datas), 2)
+        for component, (source, destination) in zip(layout.RUNTIME_LICENSES, datas):
+            self.assertEqual(Path(source), WINDOWS / 'licenses' / component / 'LICENSE.txt')
+            self.assertEqual(destination, 'toolbox/runtime/licenses/' + component)
+        python = (WINDOWS / 'licenses/python/LICENSE.txt').read_text(encoding='utf-8')
+        self.assertIn('Python Software Foundation License Version 2', python)
+        proxy = (WINDOWS / 'licenses/proxy_tools/LICENSE.txt').read_text(encoding='utf-8')
+        self.assertIn('The BSD License (BSD)', proxy)
+        self.assertIn('Copyright (c) 2013 Armin Ronacher', proxy)
+        self.assertIn('Copyright (c) 2014 Jonathan Tushman', proxy)
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(ValueError, 'Missing runtime license source'):
+                layout.runtime_license_datas(temporary)
 
     def test_missing_source_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -167,7 +184,9 @@ class BundleTests(unittest.TestCase):
                 '_internal/toolbox/THIRD_PARTY_NOTICES.md', '_internal/' + layout.CORE,
                 '_internal/toolbox/release-info.json', '_internal/playwright/driver/package/cli.js',
                 '_internal/toolbox/runtime/licenses/node/LICENSE',
-                '_internal/toolbox/runtime/licenses/ffmpeg/COPYING.GPLv3'):
+                '_internal/toolbox/runtime/licenses/ffmpeg/COPYING.GPLv3',
+                '_internal/toolbox/runtime/licenses/python/LICENSE.txt',
+                '_internal/toolbox/runtime/licenses/proxy_tools/LICENSE.txt'):
             with self.subTest(name=name):
                 file = self.root / name
                 contents = file.read_bytes()
@@ -316,6 +335,8 @@ class SpecTests(unittest.TestCase):
         self.assertEqual(sum(destination == 'toolbox/runtime' for source, destination in args['datas']), 2)
         self.assertIn((environment['TOOLBOX_NODE_LICENSE'], 'toolbox/runtime/licenses/node'), args['datas'])
         self.assertIn(('metadata/playwright', 'playwright.dist-info'), args['datas'])
+        for item in layout.runtime_license_datas(ROOT):
+            self.assertIn(item, args['datas'])
         self.assertEqual(captured['result'].datas, [('playwright/driver/package/cli.js', 'cli', 'DATA')])
         self.assertEqual(captured['result'].binaries, [('toolbox/runtime/node.exe', 'node', 'BINARY')])
         self.assertTrue(captured['exe']['exclude_binaries'])
