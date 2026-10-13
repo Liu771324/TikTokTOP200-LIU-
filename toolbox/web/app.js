@@ -130,6 +130,7 @@ async function render() {
 }
 async function tasks() {
   const data = await call("tasks.list", { offset: state.offset, limit: 20 });
+  if (state.view !== "tasks") return;
   content.replaceChildren();
   if (!data.total) {
     content.append(
@@ -527,6 +528,7 @@ async function toolForm() {
   content.append(box);
 }
 async function capture() {
+  if (state.view !== "manual-video") return;
   content.replaceChildren();
   const tool = state.tools.find((t) => t.toolId === "manual-video");
   const box = panel("添加视频");
@@ -574,6 +576,7 @@ async function capture() {
     offset: state.captureOffset,
     limit: 50,
   });
+  if (state.view !== "manual-video" || !content.contains(box)) return;
   const list = panel(`待选列表 · ${data.total} 条`);
   const controls = el("div", undefined, "toolbar");
   controls.append(
@@ -652,6 +655,7 @@ async function copy(field) {
   );
 }
 async function storage() {
+  if (state.view !== "storage") return;
   const loading = empty("正在统计存储占用", "请稍候，正在读取本机存储信息……");
   loading.setAttribute("role", "status");
   loading.setAttribute("aria-live", "polite");
