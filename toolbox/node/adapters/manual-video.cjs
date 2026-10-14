@@ -37,6 +37,7 @@ function createAdapter(overrides = {}) {
       if (!Array.isArray(parameters.items) || !parameters.items.length || parameters.items.length > 10) throw runtime.fail('INVALID_PARAMETERS', '每批最多提取10条链接。');
       const connection = await connect(context);
       const items = [], views = new Map();
+      const frame = view => JSON.stringify([view.products, view.page, view.category, view.tabs, view.brands]);
       let failed = 0;
       try {
         for (const item of parameters.items) {
@@ -47,9 +48,13 @@ function createAdapter(overrides = {}) {
             if (item.sourceKind !== 'compass_ranking' || !item.locator?.pageId) throw runtime.fail('UNSUPPORTED_SOURCE', '请重新读取视频来源。');
             page = await selectPage(connection.browser, item.locator.pageId, pages.accepts);
             await runtime.ensureReady(page, factory(), api, false);
-            if (!views.has(item.locator.pageId)) views.set(item.locator.pageId,
-              await pages.snapshot(page, item.locator.pageId, () => api.boundary(), { readTitles: false }));
-            const card = pages.locate(views.get(item.locator.pageId), item);
+            let view = views.get(item.locator.pageId);
+            if (view && frame(view) !== frame(await pages.pageIdentity(page))) throw pages.changed();
+            if (!view || item.locator.videoKey?.startsWith('snapshot:')) {
+              view = await pages.snapshot(page, item.locator.pageId, () => api.boundary(), { readTitles: false });
+              views.set(item.locator.pageId, view);
+            }
+            const card = pages.locate(view, item);
             const player = await pages.playCard(page, card);
             items.push({ ...item, title: player.caption || item.title, mediaUrl: player.videoUrl,
               details: { ...item.details, titleKnown: Boolean(player.caption) || item.details?.titleKnown === true, linkError: '' } });
