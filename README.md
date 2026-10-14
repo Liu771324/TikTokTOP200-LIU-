@@ -2,7 +2,7 @@
 
 这个总仓收录面向抖音电商工作的本地脚本和小工具。第一版采用统一桌面工具箱和独立业务引擎，已整合商机中心、TOP200、自动短视频采集和人工视频工作台。
 
-**当前版本：0.1.3 本机验收版。** 存储管理新增即时加载状态及快速切页保护，见[修复记录](docs/TOOLBOX_STORAGE_LOADING_FIX.md)。支持可视化数据目录和默认导出位置，发布包采用基础源码隐藏。本机程序、任务、视频及浏览器资料已迁到D盘，迁移校验与清理结果见[实施记录](docs/TOOLBOX_DATA_MIGRATION_PLAN.md)。四工具的有限真实样本和后续限制见[此前验收记录](docs/TOOLBOX_V1_LOCAL_ACCEPTANCE.md)。普通用户操作见[工具箱使用说明](toolbox/用户使用说明.md)，开发启动与构建入口见 [toolbox 说明](toolbox/README.md)。现有独立工具仍可按各自说明运行。
+**当前版本：0.1.4 本机验收版。** 人工视频工作台支持罗盘和抖音页面读取，新增封面、商品/作者分组、筛选及单条/批量链接提取，并修复商机中心复选框布局，见[实施记录及验收边界](docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。存储管理的即时加载及切页保护见[修复记录](docs/TOOLBOX_STORAGE_LOADING_FIX.md)。支持可视化数据目录和默认导出位置，发布包采用基础源码隐藏。本机程序、任务、视频及浏览器资料已迁到D盘，迁移校验与清理结果见[实施记录](docs/TOOLBOX_DATA_MIGRATION_PLAN.md)。四工具的有限真实样本和后续限制见[此前验收记录](docs/TOOLBOX_V1_LOCAL_ACCEPTANCE.md)。普通用户操作见[工具箱使用说明](toolbox/用户使用说明.md)，开发启动与构建入口见 [toolbox 说明](toolbox/README.md)。现有独立工具仍可按各自说明运行。
 
 本机现已统一为`D:\前端\ai\电商工具箱\程序`和`D:\前端\ai\电商工具箱\数据`，清理验收视频及临时产物后总目录约805MB。源码仓库单独保留；空间明细、迁移核验和后续小于5GB的程序容量目标见[统一目录与容量记录](docs/TOOLBOX_UNIFIED_DIRECTORY.md)。
 
