@@ -22,8 +22,9 @@ for line in (ROOT / 'toolbox/requirements.lock.txt').read_text(encoding='utf-8-s
     if '==' in line and not line.startswith('#'):
         datas += copy_metadata(line.split('==')[0])
 
-a = Analysis([str(WINDOWS / 'bootstrap.py')], pathex=[str(ROOT), str(ROOT / '抖音视频下载器（免 Python 版）')], binaries=[], datas=datas,
-    hiddenimports=core_imports(ROOT) + ['douyin_downloader_core', 'webview.platforms.winforms', 'webview.platforms.edgechromium', 'pystray._win32'],
+a = Analysis([str(WINDOWS / 'bootstrap.py')], pathex=[str(ROOT)], binaries=[], datas=datas,
+    hiddenimports=core_imports(ROOT) + ['toolbox.engines.downloader.douyin_downloader_core', 'toolbox.engines.business.adapter',
+        'toolbox.python_worker', 'webview.platforms.winforms', 'webview.platforms.edgechromium', 'pystray._win32'],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     excludes=['PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'tkinter', 'webview.platforms.android', 'webview.platforms.gtk', 'webview.platforms.cocoa'],
     noarchive=False, optimize=0)

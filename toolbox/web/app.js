@@ -302,6 +302,11 @@ async function resultPage(taskId, offset) {
     resultTable(result.items),
     pager(result.total, offset, 50, (n) => resultPage(taskId, n)),
   );
+  if (result.engine === 'business-python-v1') {
+    box.prepend(el('p', `已检查 ${result.stats.checkedPages || 0} 页 · 列表范围${result.stats.listCoverageComplete ? '已覆盖' : '未完成'} · 失败 ${result.failures} 条 · 无法解析 ${result.unparseable} 条。昨日成交档位由今日金额与环比反推，非平台昨日原值。`, 'hint'));
+  } else if (result.readOnly) {
+    box.prepend(el('p', '这是旧版商机任务，结果和文件可查看、导出；请重新读取类目并创建 Python 采集任务。', 'hint'));
+  }
   if(['business-center','top200'].includes(state.detailTool)) {
     const choices = el('div',undefined,'toolbar');
     const sections = [['results','正常结果'],['failures','失败记录']];
@@ -315,6 +320,9 @@ function resultTable(items) {
   const wrap = el("div", undefined, "table-wrap");
   const table = el("table");
   const names = {rank:"排名", trendText:"趋势", productName:"商品", keyword:"商机词", totalSales:"成交金额", yesterday:"昨日", today:"今日", growth:"增长", categoryPath:"类目", rankingType:"榜单", actualPeriod:"实际周期", priceRange:"价格", productUrl:"商品链接", shopName:"店铺", title:"标题", status:"状态", sourceKind:"来源", caption:"文案", message:"说明", reason:"失败原因", error:"错误信息", stage:"处理阶段", page:"页码", attempts:"尝试次数", retries:"重试次数", at:"记录时间", downloadedVideos:"下载视频", failedVideos:"失败视频", matchedVideos:"命中视频"};
+  if (items.some(item => item.yesterdaySource)) names.yesterday = '昨日（反推）';
+  if (items.some(item => item.indicatorIdBinding)) names.growth = '今日环比';
+  names.classification = '分类';
   const columns = Object.keys(names).filter(key => items.some(item => key in item));
   if (!columns.length) return el("p", "结果已保存，详情可查看交付文件和任务日志。", "hint");
   const head = el("tr");
@@ -432,6 +440,7 @@ async function toolForm() {
       ),
     );
     if (tool.toolId === "business-center") {
+      form.prepend(el('p', '使用 Python API 采集，支持一级至三级官方类目；三级采集包含其下属类目。任务可暂停、继续和停止，异常数据会单独记录。', 'hint'));
       for (const [name, title, value] of [
         ["minSales", "最低成交金额（元）", 10000],
         ["maxSales", "最高成交金额（元，留空不限）", ""],

@@ -1,7 +1,7 @@
 'use strict';
-const compass = require('../../../Tiktok video/compass-page');
-const { createCollector, safePart } = require('../../../Tiktok video/collector');
-const runtime = require('../../../Tiktok video/toolbox-runtime');
+const compass = require('../../engines/video/compass-page');
+const { createCollector, safePart } = require('../../engines/video/collector');
+const runtime = require('../../engines/video/toolbox-runtime');
 const browserClient = require('../browser-client.cjs');
 const douyin = require('../douyin-page.cjs');
 

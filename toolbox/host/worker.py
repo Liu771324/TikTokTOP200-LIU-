@@ -4,6 +4,8 @@ import queue
 import subprocess
 import threading
 import time
+import sys
+from pathlib import Path
 from uuid import uuid4
 
 from .errors import ToolboxError
@@ -13,7 +15,7 @@ MAX_MESSAGE = 1024 * 1024
 
 
 class NodeWorker:
-    def __init__(self, node, entrypoint, *, on_log=lambda message: None, test_adapter=False):
+    def __init__(self, node, entrypoint, *, on_log=lambda message: None, test_adapter=False, command=None):
         self._messages = queue.Queue(maxsize=256)
         self._write_lock = threading.Lock()
         self._close_lock = threading.Lock()
@@ -21,7 +23,7 @@ class NodeWorker:
         self._failure = None
         self._closed = False
         self._last_heartbeat = time.monotonic()
-        command = [str(node), str(entrypoint)]
+        command = list(command) if command else [str(node), str(entrypoint)]
         if test_adapter:
             command.append('--test-adapter')
         self.process, self._job = start_process(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -153,3 +155,11 @@ class NodeWorker:
 
     def __exit__(self, *_):
         self.close()
+
+
+class PythonWorker(NodeWorker):
+    """Use the same bounded protocol/identity checks for the Python business engine."""
+    def __init__(self, node=None, entrypoint=None, *, on_log=lambda message: None, test_adapter=False):
+        command = ([sys.executable, '--business-worker'] if getattr(sys, 'frozen', False)
+                   else [sys.executable, '-u', str(Path(__file__).parents[1] / 'python_worker.py')])
+        super().__init__(node, entrypoint, on_log=on_log, command=command)

@@ -1,0 +1,449 @@
+{
+  "date": "2026-10-14",
+  "copies": [
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\collector.js",
+      "target": "toolbox/engines/top200/collector.js",
+      "size": 33228,
+      "sha256": "8849d952dbcc7397fad9874c9e8d7b9355168b47bf6a6fe9b195bc28e0e76a56",
+      "currentSha256": "8849d952dbcc7397fad9874c9e8d7b9355168b47bf6a6fe9b195bc28e0e76a56"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\edge.js",
+      "target": "toolbox/engines/top200/edge.js",
+      "size": 3423,
+      "sha256": "596c01aa14e60cef288e9f737e01f2689de3bb88136079119194795f5739265e",
+      "currentSha256": "596c01aa14e60cef288e9f737e01f2689de3bb88136079119194795f5739265e"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\task-store.js",
+      "target": "toolbox/engines/top200/task-store.js",
+      "size": 5324,
+      "sha256": "3b04f998b0cff0f1135a591eb8311476879793ac05755103e7a35ed30ef6bb9c",
+      "currentSha256": "3b04f998b0cff0f1135a591eb8311476879793ac05755103e7a35ed30ef6bb9c"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\collector-utils.js",
+      "target": "toolbox/engines/top200/collector-utils.js",
+      "size": 7640,
+      "sha256": "094506ae7a966a833d657669cf155583cf7e223326d669df16aa9ad803ccd904",
+      "currentSha256": "094506ae7a966a833d657669cf155583cf7e223326d669df16aa9ad803ccd904"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\export-excel.js",
+      "target": "toolbox/engines/top200/export-excel.js",
+      "size": 9764,
+      "sha256": "9b765c3e9cdec498e767c4ded2d36d3ebdd18380691cd25eaea73085120cd58c",
+      "currentSha256": "9b765c3e9cdec498e767c4ded2d36d3ebdd18380691cd25eaea73085120cd58c"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\collector.js",
+      "target": "toolbox/engines/video/collector.js",
+      "size": 56991,
+      "sha256": "dc479367e80a21cb555c4f8eac7ffbdfa889a5949ff5188f295d4d16f0c67315",
+      "currentSha256": "dc479367e80a21cb555c4f8eac7ffbdfa889a5949ff5188f295d4d16f0c67315"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\edge.js",
+      "target": "toolbox/engines/video/edge.js",
+      "size": 9045,
+      "sha256": "d0f1f3ccd1e821a987eb8103bb45304893f1f0ffd8eb5d98feb24ddb663d9985",
+      "currentSha256": "d0f1f3ccd1e821a987eb8103bb45304893f1f0ffd8eb5d98feb24ddb663d9985"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\video-fingerprint.js",
+      "target": "toolbox/engines/video/video-fingerprint.js",
+      "size": 10548,
+      "sha256": "b0de6495f462b350a2501850b9f93eeae0e7103516f3833296454f11a4a990ed",
+      "currentSha256": "b0de6495f462b350a2501850b9f93eeae0e7103516f3833296454f11a4a990ed"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\task-store.js",
+      "target": "toolbox/engines/video/task-store.js",
+      "size": 2761,
+      "sha256": "47b82207126275e76b5b5dfea4926d8295b79910e0ea02dc42f61bdc9c501bfe",
+      "currentSha256": "47b82207126275e76b5b5dfea4926d8295b79910e0ea02dc42f61bdc9c501bfe"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\compass-page.js",
+      "target": "toolbox/engines/video/compass-page.js",
+      "size": 13882,
+      "sha256": "31dad52ef02aa3e480f067dfd9f9037e8cbba515e565c879968cbd5955528205",
+      "currentSha256": "323ed228ee946f1804fc795824d2c1008b1f5843c93063398bf3c5115c4d0074"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\toolbox-runtime.js",
+      "target": "toolbox/engines/video/toolbox-runtime.js",
+      "size": 3207,
+      "sha256": "6b24166e242f7d381b66e86ddbeb05e2577e79099e5c533c82636f92ff7316de",
+      "currentSha256": "6b24166e242f7d381b66e86ddbeb05e2577e79099e5c533c82636f92ff7316de"
+    },
+    {
+      "source": "D:\\前端\\ai\\豆包\\抖音视频下载器（免 Python 版）\\douyin_downloader_core.py",
+      "target": "toolbox/engines/downloader/douyin_downloader_core.py",
+      "size": 23229,
+      "sha256": "b5b76c3f703a902f2cf2a82df2463d18f2d2b4dc09cb1289b9baa5f9770a4942",
+      "currentSha256": "b5b76c3f703a902f2cf2a82df2463d18f2d2b4dc09cb1289b9baa5f9770a4942"
+    },
+    {
+      "source": "D:\\前端\\ai\\豆包\\抖音视频下载器（免 Python 版）\\THIRD_PARTY_NOTICES.md",
+      "target": "toolbox/engines/downloader/THIRD_PARTY_NOTICES.md",
+      "size": 2086,
+      "sha256": "97729984adfd3fa12899e254e1e3f63848b05689a2ae26fe0eb2e20747e73c94",
+      "currentSha256": "97729984adfd3fa12899e254e1e3f63848b05689a2ae26fe0eb2e20747e73c94"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\商机中心\\edge.js",
+      "target": "toolbox/engines/shared/edge.js",
+      "size": 4069,
+      "sha256": "19200afcdbeb13bb7c7bee3a776a82458b419f0bea0f5500104d4a7b8b048faf",
+      "currentSha256": "19200afcdbeb13bb7c7bee3a776a82458b419f0bea0f5500104d4a7b8b048faf"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\collector-flow.test.js",
+      "target": "toolbox/tests/engines/top200/collector-flow.test.js",
+      "size": 907,
+      "sha256": "7dca149d63a344e72132f679bf0c2b72ef215ba0fe162e33f4282f837efea0b0",
+      "currentSha256": "59c54e9e8350c54054e57d2985c02d598a071e658fd132b5958160fa5ec5bac4"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\collector-page-controls.test.js",
+      "target": "toolbox/tests/engines/top200/collector-page-controls.test.js",
+      "size": 4490,
+      "sha256": "f4192758c54422eb3f3a829b640db69bcff4c762b5daf5a9c705b791883c8b04",
+      "currentSha256": "0bd0cf876d4d1a07b909de958df440cc9a50798926d5aa8a5ae49cddb617ae47"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\collector-utils.test.js",
+      "target": "toolbox/tests/engines/top200/collector-utils.test.js",
+      "size": 7460,
+      "sha256": "e4b32d52715cd919e33a2bac58fe3c555a93c11df55113b3daf28f135af78e5f",
+      "currentSha256": "fa27c7166bd7fc2756b4410ef72041d292618a829f5ba94fdf9dc120735b928d"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\edge-config.test.js",
+      "target": "toolbox/tests/engines/top200/edge-config.test.js",
+      "size": 467,
+      "sha256": "d75080aa9079b0a48a96714167f34f3f355cd3a8e972accc9bc7ec5b160ab1ab",
+      "currentSha256": "b27d3a88f8abe04a96dda91b2d19f2951bd6d6b897f6ac32eb72c6985f0c2c9d"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\task-state-fixtures.test.js",
+      "target": "toolbox/tests/engines/top200/task-state-fixtures.test.js",
+      "size": 5339,
+      "sha256": "2165531541d1c7cf32490eaf0d4d4b1786e4050a07f0dadd3d1b2e16482f1440",
+      "currentSha256": "7bb58fa0b525800edb1a85410a601353618d01641096a6d8a9da67acb7152c39"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\task-store-export.test.js",
+      "target": "toolbox/tests/engines/top200/task-store-export.test.js",
+      "size": 6364,
+      "sha256": "564c12f3e963b04dfe7881939813aa2db26095a1a94a18ade56d08138d4c9ae4",
+      "currentSha256": "7be6a4772d3b5f09e94bf5a21421eba82dc3629ba6f9ef65d6927b43996e33fa"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\toolbox-adapter.test.js",
+      "target": "toolbox/tests/engines/top200/toolbox-adapter.test.js",
+      "size": 20745,
+      "sha256": "87f07b7d981c3975fb0264326e8fea9052bb114caed974ddbd78f51164505e68",
+      "currentSha256": "35b68726200c80ee9d54365c5dd05f3fb4d669c65af624ec504dd703135286e9"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\fixtures\\README.md",
+      "target": "toolbox/tests/engines/top200/fixtures/README.md",
+      "size": 3951,
+      "sha256": "b8c5756218d8c4ba5b21c4742388c6fc532776a32c74a59e11c0bc80dc2fe0cb",
+      "currentSha256": "b8c5756218d8c4ba5b21c4742388c6fc532776a32c74a59e11c0bc80dc2fe0cb"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\fixtures\\task-states.json",
+      "target": "toolbox/tests/engines/top200/fixtures/task-states.json",
+      "size": 31468,
+      "sha256": "1bd7053869c7fdc13cb765ff7e39e12164d0f6717e2831fe9efdf84b64414b1c",
+      "currentSha256": "1bd7053869c7fdc13cb765ff7e39e12164d0f6717e2831fe9efdf84b64414b1c"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok TOP200\\test\\fixtures\\top200-table.html",
+      "target": "toolbox/tests/engines/top200/fixtures/top200-table.html",
+      "size": 779,
+      "sha256": "ab469eb399711a3dcaa113a161c2f19018ba76fc860c6460ced094ffe93730c3",
+      "currentSha256": "ab469eb399711a3dcaa113a161c2f19018ba76fc860c6460ced094ffe93730c3"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\test\\compass-dom.test.js",
+      "target": "toolbox/tests/engines/video/compass-dom.test.js",
+      "size": 24667,
+      "sha256": "09fed426f1cfc326c86f2f70bbdb28a9c17580d7d2c202fa5cd94bdbeb888e9d",
+      "currentSha256": "fe5a50a06d586d554ff502984a4da21f32e1014770fd5b873189e79d3debaa42"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\test\\pure-boundaries.test.js",
+      "target": "toolbox/tests/engines/video/pure-boundaries.test.js",
+      "size": 5649,
+      "sha256": "8b8a5082527ea70a2b55a0412a6b02990d80a043e891bf792c86768d9d66e642",
+      "currentSha256": "70cf85131bd982958ee2bca47d50f52e0daea73eeee34aacb8a1ab3511330c19"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\test\\toolbox-adapters.test.js",
+      "target": "toolbox/tests/engines/video/toolbox-adapters.test.js",
+      "size": 31735,
+      "sha256": "3d4df9b5bff8cf30ff2059c6aade7ab283c97901231049f9fc2678fc1d487216",
+      "currentSha256": "408450268b518c248186f279709f6c706454f0f981bbc5a65bbd318e0e104af4"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\test\\boundary-expectations.json",
+      "target": "toolbox/tests/engines/video/boundary-expectations.json",
+      "size": 2378,
+      "sha256": "e8d766cc9f30ba0f0a6751505c7db7bbefa9366ac3d9f7e1b91c8eaa55759426",
+      "currentSha256": "e8d766cc9f30ba0f0a6751505c7db7bbefa9366ac3d9f7e1b91c8eaa55759426"
+    },
+    {
+      "source": "D:\\前端\\ai\\Script All\\Tiktok video\\collector.test.js",
+      "target": "toolbox/tests/engines/video/collector.test.js",
+      "size": 1721,
+      "sha256": "737176a305a2074020930a5612be47c578e4a4e91c6d6414ecd97b4a40962acc",
+      "currentSha256": "d01fa4bc64603b3df524cd228f352a39022360ca2c2e21a6559fb8b63600a5ad"
+    },
+    {
+      "source": "D:\\前端\\ai\\豆包\\抖音视频下载器（免 Python 版）\\test_downloader_core.py",
+      "target": "toolbox/tests/engines/downloader/test_downloader_core.py",
+      "size": 22059,
+      "sha256": "975e54f07760ec3c196ab053e695b2cd8413f3a6b6420268d4c032feeab12dda",
+      "currentSha256": "659777c326246ad4889af732d56d1f34cc7ad70b4dcb7a59a905e8999070aafc"
+    }
+  ],
+  "oldDirectoriesBeforeCleanup": {
+    "Tiktok TOP200": {
+      "files": 2746,
+      "bytes": 50318853,
+      "groups": {
+        ".gitignore": {
+          "files": 1,
+          "bytes": 112
+        },
+        "collector-utils.js": {
+          "files": 1,
+          "bytes": 7640
+        },
+        "collector.js": {
+          "files": 1,
+          "bytes": 33228
+        },
+        "edge.js": {
+          "files": 1,
+          "bytes": 3423
+        },
+        "export-excel.js": {
+          "files": 1,
+          "bytes": 9764
+        },
+        "package-lock.json": {
+          "files": 1,
+          "bytes": 40210
+        },
+        "package.json": {
+          "files": 1,
+          "bytes": 596
+        },
+        "server.js": {
+          "files": 1,
+          "bytes": 12452
+        },
+        "task-store.js": {
+          "files": 1,
+          "bytes": 5324
+        },
+        "使用说明.md": {
+          "files": 1,
+          "bytes": 5099
+        },
+        "启动采集.bat": {
+          "files": 1,
+          "bytes": 520
+        },
+        "安装依赖.bat": {
+          "files": 1,
+          "bytes": 594
+        },
+        "完整技术交接文档-TOP200采集系统.md": {
+          "files": 1,
+          "bytes": 46103
+        },
+        "当前问题与修改建议.md": {
+          "files": 1,
+          "bytes": 26586
+        },
+        "技术交接文档-TOP200采集系统.md": {
+          "files": 1,
+          "bytes": 21198
+        },
+        "抖店环境与采集约束.md": {
+          "files": 1,
+          "bytes": 3704
+        },
+        "node_modules": {
+          "files": 2678,
+          "bytes": 39385743
+        },
+        "public": {
+          "files": 1,
+          "bytes": 20154
+        },
+        "reports": {
+          "files": 12,
+          "bytes": 2269009
+        },
+        "test": {
+          "files": 13,
+          "bytes": 85761
+        },
+        "data": {
+          "files": 26,
+          "bytes": 8341633
+        }
+      }
+    },
+    "Tiktok video": {
+      "files": 417,
+      "bytes": 19784274,
+      "groups": {
+        ".gitignore": {
+          "files": 1,
+          "bytes": 41
+        },
+        "collector.js": {
+          "files": 1,
+          "bytes": 56991
+        },
+        "collector.test.js": {
+          "files": 1,
+          "bytes": 1721
+        },
+        "compass-page.js": {
+          "files": 1,
+          "bytes": 13882
+        },
+        "edge.js": {
+          "files": 1,
+          "bytes": 9045
+        },
+        "package-lock.json": {
+          "files": 1,
+          "bytes": 751
+        },
+        "package.json": {
+          "files": 1,
+          "bytes": 356
+        },
+        "README.md": {
+          "files": 1,
+          "bytes": 5258
+        },
+        "server.js": {
+          "files": 1,
+          "bytes": 9591
+        },
+        "task-store.js": {
+          "files": 1,
+          "bytes": 2761
+        },
+        "toolbox-runtime.js": {
+          "files": 1,
+          "bytes": 3207
+        },
+        "video-fingerprint.js": {
+          "files": 1,
+          "bytes": 10548
+        },
+        "启动采集.cmd": {
+          "files": 1,
+          "bytes": 1583
+        },
+        "安装依赖.cmd": {
+          "files": 1,
+          "bytes": 971
+        },
+        "短视频榜采集工具-需求与技术方案.md": {
+          "files": 1,
+          "bytes": 16395
+        },
+        "data": {
+          "files": 18,
+          "bytes": 566514
+        },
+        "logs": {
+          "files": 8,
+          "bytes": 111177
+        },
+        "node_modules": {
+          "files": 367,
+          "bytes": 9315051
+        },
+        "public": {
+          "files": 3,
+          "bytes": 16838
+        },
+        "test": {
+          "files": 4,
+          "bytes": 64429
+        },
+        "视频": {
+          "files": 2,
+          "bytes": 9577164
+        }
+      }
+    }
+  },
+  "postCopyChanges": [
+    "Node adapters now load toolbox/engines paths.",
+    "Shared Edge remains for the not-yet-integrated Search term server.",
+    "Migrated tests load new modules; independent GUI import assertion removed; task-store/export fixture uses isolated temporary module directory.",
+    "video/compass-page.js identity now returns canonical cover origin+pathname to avoid persisting signed cover URLs; page-backed fixture expectation updated."
+  ],
+  "cleanup": {
+    "Tiktok TOP200": {
+      "removedFiles": 2708,
+      "removedBytes": 39708211,
+      "archivedFiles": 38,
+      "archivedBytes": 10610642,
+      "oldDirectoryExists": true,
+      "oldDirectoryRemainingFolders": [
+        ".git"
+      ]
+    },
+    "Tiktok video": {
+      "removedFiles": 389,
+      "removedBytes": 9529419,
+      "archivedFiles": 28,
+      "archivedBytes": 10254855,
+      "oldDirectoryExists": false,
+      "oldDirectoryRemainingFolders": []
+    }
+  },
+  "verification": {
+    "nodeFocusedTests": {
+      "passed": 126,
+      "failed": 0,
+      "command": "node --test --test-concurrency=1 --test-reporter=dot toolbox/tests/engines/top200/*.test.js toolbox/tests/engines/video/*.test.js"
+    },
+    "downloaderTests": {
+      "passed": 29,
+      "failed": 0,
+      "command": "python -m unittest discover -s toolbox/tests/engines/downloader -p test_downloader_core.py"
+    },
+    "localNodeDependencyClosure": {
+      "modules": 15,
+      "passed": true
+    },
+    "environment": "Final test runs outside sandbox, using workspace-local TEMP; DOM tests block external requests; no live platform collection. Initial sandbox runs hit EPERM/EACCES; parallel Node tests had transient rename failures.",
+    "testTemporaryDirectoryRemoved": true
+  },
+  "archive": {
+    "root": "local-archive/legacy-tools",
+    "files": 66,
+    "bytes": 20865497,
+    "sha256VerifiedPerFile": true,
+    "manifest": "local-archive/legacy-tools/archive-integrity.json",
+    "reason": "Initial recursive delete was rejected by automatic approval due to business-data loss risk. Switched to preserving all legacy business outputs in a local ignored archive."
+  }
+}

@@ -2,9 +2,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const collector = require('../../../Tiktok TOP200/collector');
-const { createTaskState } = require('../../../Tiktok TOP200/task-store');
-const { exportTask } = require('../../../Tiktok TOP200/export-excel');
+const collector = require('../../engines/top200/collector');
+const { createTaskState } = require('../../engines/top200/task-store');
+const { exportTask } = require('../../engines/top200/export-excel');
 const browserClient = require('../browser-client.cjs');
 
 const descriptor = { toolId: 'top200', parameterVersion: 1, requiresBrowser: true,

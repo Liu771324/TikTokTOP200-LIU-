@@ -7,7 +7,7 @@ from pathlib import Path
 from .errors import ToolboxError
 from .logs import redact
 from .state import ACTIVE
-from .worker import NodeWorker
+from .worker import NodeWorker, PythonWorker
 
 PARAMETERS = {
     'business-center': {'categories', 'minSales', 'maxSales', 'only30dGrowth'},
@@ -112,7 +112,8 @@ class TaskScheduler:
                     with self._lock:
                         self._state(task_id, 'cancelled' if handle['cancel'].is_set() else result['state'], attempt)
                     return
-                with NodeWorker(self.node, self.entrypoint,
+                Worker = PythonWorker if self.descriptors[task['toolId']].get('engine') == 'python' and not self._test_adapter else NodeWorker
+                with Worker(self.node, self.entrypoint,
                                 on_log=lambda line: self.logs.write(line, task_id), test_adapter=self._test_adapter) as worker:
                     with self._lock:
                         handle['worker'] = worker
@@ -247,6 +248,11 @@ class TaskScheduler:
                     raise ToolboxError('UNSUPPORTED_OPERATION', '任务当前不能恢复或重试。')
                 if not Path(self.store.paths.resolve(f'tasks/{task_id}/engine-state.json')).is_file():
                     raise ToolboxError('STATE_CORRUPT', '没有可恢复的进度，请按相同条件创建新任务。')
+                if task['toolId'] == 'business-center' and descriptor.get('engine') == 'python':
+                    from .state import load_state
+                    envelope = load_state(self.store.paths.resolve(f'tasks/{task_id}/engine-state.json'), task_id, task['toolId'])
+                    if envelope['state'].get('engine') != 'business-python-v1':
+                        raise ToolboxError('STATE_INCOMPATIBLE', '此任务使用旧版商机引擎，结果仍可查看；请按原条件新建 Python 采集任务。')
                 self._state(task_id, 'queued', task['attempt'])
                 self._schedule(self.store.task(task_id), command == 'retry_failed')
             else:

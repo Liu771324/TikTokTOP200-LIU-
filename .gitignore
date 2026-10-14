@@ -23,6 +23,7 @@
 **/dist/
 **/.artifact-build/
 **/release/
+local-archive/
 **/douyin_downloads/
 **/ffmpeg.exe
 Search term/app/runtime/

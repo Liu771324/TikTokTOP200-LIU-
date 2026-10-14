@@ -1,5 +1,5 @@
 [
-  {"toolId":"business-center","name":"商机中心","engine":"node","available":true,"parameterVersion":1,"requiresBrowser":true,"supportsPause":true,"supportsResume":true,"supportsRetryFailed":true},
+  {"toolId":"business-center","name":"商机中心","engine":"python","available":true,"parameterVersion":1,"requiresBrowser":true,"supportsPause":true,"supportsResume":true,"supportsRetryFailed":true},
   {"toolId":"top200","name":"商品 TOP200","engine":"node","available":true,"parameterVersion":1,"requiresBrowser":true,"supportsPause":true,"supportsResume":true,"supportsRetryFailed":true},
   {"toolId":"video-ranking","name":"自动短视频","engine":"node","available":true,"parameterVersion":1,"requiresBrowser":true,"supportsPause":true,"supportsResume":true,"supportsRetryFailed":true},
   {"toolId":"manual-video","name":"人工视频工作台","engine":"python+node","available":true,"parameterVersion":1,"requiresBrowser":false,"supportsPause":false,"supportsResume":true,"supportsRetryFailed":true}

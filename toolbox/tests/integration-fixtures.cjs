@@ -5,11 +5,12 @@ const path = require('node:path');
 
 function fixtures() {
   const root = path.resolve(__dirname, '../..');
-  const businessCases = require(path.join(root, '商机中心/test/fixtures/task_states.js')).createTaskStateFixtures();
-  const business = structuredClone(businessCases.find(item => item.name === 'detail_failure').task);
-  business.unparseableItems = structuredClone(businessCases.find(item => item.name === 'parse_failure').task.unparseableItems);
-  business.failures[0].reason += '\n中文错误、"引号"与表情😀';
-  const topCases = require(path.join(root, 'Tiktok TOP200/test/fixtures/task-states.json')).cases;
+  const business = { taskId: 'legacy-business', results: [
+    { productName: '历史核桃仁', categoryPath: '食品 / 坚果', totalSales: '1万-2.5万', yesterday: '100-250', today: '250-500', growth: '20%' },
+    { productName: '历史花生米', categoryPath: '食品 / 坚果', totalSales: '1万-2.5万', yesterday: '100-250', today: '250-500', growth: '10%' },
+  ], failures: [{ reason: '详情失败\n中文错误、"引号"与表情😀' }],
+  unparseableItems: [{ reason: '历史金额档位无法确认' }], combinations: [], stats: {} };
+  const topCases = require(path.join(root, 'toolbox/tests/engines/top200/fixtures/task-states.json')).cases;
   const top = structuredClone(topCases.find(item => item.id === 'row_link_failed').task);
   top.failures[0].reason = '商品链接读取失败\n保留中文与"引号"';
   const video = {
@@ -50,7 +51,7 @@ function coldImport(root, dependencyRoot) {
   for (const key of ['spawn', 'spawnSync', 'execSync', 'execFileSync']) forbid(require('node:child_process'), key);
   forbid(fs, 'mkdirSync'); forbid(fs, 'writeFileSync'); forbid(fs, 'appendFileSync');
   try {
-    const toolIds = ['business-center', 'top200', 'video-ranking', 'manual-video'];
+    const toolIds = ['top200', 'video-ranking', 'manual-video'];
     const loaded = toolIds.map(toolId => {
       const adapter = require(path.join(root, `toolbox/node/adapters/${toolId}.cjs`));
       if (typeof adapter.read_results !== 'function') throw new Error(`Missing actual read_results: ${toolId}`);

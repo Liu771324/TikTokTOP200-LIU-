@@ -3,7 +3,6 @@ const path = require('node:path');
 const { createApi } = require('./sdk.cjs');
 const MAX_BYTES = 1024 * 1024;
 const adapterPaths = {
-  'business-center': './adapters/business-center.cjs',
   top200: './adapters/top200.cjs',
   'video-ranking': './adapters/video-ranking.cjs',
   'manual-video': './adapters/manual-video.cjs',
@@ -74,7 +73,7 @@ function handle(message) {
   }
   const context = message.context;
   const isTask = ['run', 'download_item', 'read_results'].includes(message.type);
-  if (!context || context.protocolVersion !== 1 || !Object.hasOwn(adapterPaths, context.toolId)
+  if (!context || context.protocolVersion !== 1 || !(Object.hasOwn(adapterPaths, context.toolId) || (testMode && context.toolId === 'business-center'))
       || (isTask && (!/^[a-f0-9]{32}$/.test(context.taskId) || !Number.isInteger(context.attempt) || context.attempt < 1))
       || (!isTask && typeof context.operationId !== 'string')
       || (message.parameters !== undefined && (message.parameters === null || Array.isArray(message.parameters) || typeof message.parameters !== 'object'))) {

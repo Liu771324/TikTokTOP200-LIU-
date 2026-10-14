@@ -7,7 +7,9 @@ from pathlib import Path
 if getattr(sys, 'frozen', False):
     os.environ['PLAYWRIGHT_NODEJS_PATH'] = str(Path(sys._MEIPASS) / 'toolbox/runtime/node.exe')
 
-from toolbox.desktop import main
-
 if __name__ == '__main__':
+    if sys.argv[1:] == ['--business-worker']:
+        from toolbox.python_worker import main
+    else:
+        from toolbox.desktop import main
     main()

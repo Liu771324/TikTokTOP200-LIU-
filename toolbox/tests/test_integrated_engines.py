@@ -20,7 +20,7 @@ from toolbox.host.paths import DataPaths
 from toolbox.host.resources import ResourceQueue
 from toolbox.host.state import save_state
 from toolbox.host.store import Store
-from toolbox.host.worker import NodeWorker
+from toolbox.host.worker import NodeWorker, PythonWorker
 from toolbox.windows.layout import SOURCE_FILES, validate_sources
 
 
@@ -40,9 +40,9 @@ def tree_snapshot(root):
 
 
 def legacy_snapshot():
-    folders = {'商机中心': ('data', 'logs', 'reports'), 'Tiktok TOP200': ('data', 'logs', 'reports'),
-               'Tiktok video': ('data', 'logs', '视频')}
-    return {(project, folder): tree_snapshot(REPO / project / folder)
+    folders = {'business-node': ('data', 'logs', 'reports'), 'top200': ('data', 'logs', 'reports'),
+               'video': ('data', 'logs', '视频'), 'business-python': ('data', 'reports', 'checkpoints')}
+    return {(project, folder): tree_snapshot(REPO / 'local-archive/legacy-tools' / project / folder)
             for project, names in folders.items() for folder in names}
 
 
@@ -83,7 +83,8 @@ class IntegratedEngineTests(unittest.TestCase):
     def call(self, tool_id, kind, parameters, context, entrypoint=WORKER, started=True):
         events = []
         # No --test-adapter: the fixed allowlist loads production adapter modules.
-        with NodeWorker(self.node, entrypoint, on_log=lambda line: events.append(('stderr', line))) as worker:
+        Worker = PythonWorker if tool_id == 'business-center' else NodeWorker
+        with Worker(self.node, entrypoint, on_log=lambda line: events.append(('stderr', line))) as worker:
             self.assertNotIn('--test-adapter', worker.process.args)
             request_id = worker.send(kind, context=context, parameters=parameters)
             deadline = time.monotonic() + 15
@@ -144,7 +145,7 @@ class IntegratedEngineTests(unittest.TestCase):
 
         browser = SimpleNamespace(queue=queue_, lease=forbidden_lease)
         operations = Operations(store, Events(), Logs(store.paths), browser, node=self.node,
-                                entrypoint=WORKER, descriptors={tool: {'available': True} for tool in TOOLS})
+                                entrypoint=WORKER, descriptors={tool: {'available': True, 'engine': 'python' if tool == 'business-center' else 'node'} for tool in TOOLS})
         self.addCleanup(operations.shutdown)
         for tool_id in TOOLS:
             task = store.create_task(tool_id, {})
@@ -235,12 +236,12 @@ class IntegratedEngineTests(unittest.TestCase):
                                   capture_output=True, text=True, encoding='utf-8', timeout=30, env=environment)
             self.assertEqual(cold.returncode, 0, cold.stderr)
             observed = json.loads(cold.stdout)
-            self.assertEqual(observed['toolIds'], list(TOOLS))
+            self.assertEqual(observed['toolIds'], list(TOOLS[1:]))
             for key in ('sharedPlaywright', 'sharedExcel'):
                 self.assertTrue(Path(observed[key]).resolve().is_relative_to(dependency_root))
             copied_before = {relative: hashlib.sha256((layout / relative).read_bytes()).digest() for relative in SOURCE_FILES}
             data_root = self.root / 'isolated-data'
-            for index, tool_id in enumerate(TOOLS, 1):
+            for index, tool_id in enumerate(TOOLS[1:], 2):
                 context = self.context(tool_id, index, data_root)
                 self.seed(context)
                 for section, expected in self.fixtures[tool_id]['expected'].items():

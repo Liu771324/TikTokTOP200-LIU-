@@ -1,8 +1,8 @@
 'use strict';
-const collector = require('../../../Tiktok video/collector');
-const compass = require('../../../Tiktok video/compass-page');
-const fingerprint = require('../../../Tiktok video/video-fingerprint');
-const runtime = require('../../../Tiktok video/toolbox-runtime');
+const collector = require('../../engines/video/collector');
+const compass = require('../../engines/video/compass-page');
+const fingerprint = require('../../engines/video/video-fingerprint');
+const runtime = require('../../engines/video/toolbox-runtime');
 const browserClient = require('../browser-client.cjs');
 
 const descriptor = { id: 'video-ranking', parameterVersion: 1, operations: ['run', 'discover', 'read_results'] };

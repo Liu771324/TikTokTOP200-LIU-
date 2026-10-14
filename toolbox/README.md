@@ -1,6 +1,6 @@
 # 电商工具箱
 
-这里是桌面工具箱实现目录，包含桌面外壳、托盘、单实例、操作桥接、任务/浏览器调度、结果存储、工作者协议及四个业务适配器。当前交付0.1.4本机验收版，人工视频工作台支持双来源读取及可辨识待选列表，商机复选框布局已修复，见[实施记录及验收边界](../docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。四入口已启用，支持自选数据和默认导出目录；存储页加载及切页保护见[修复记录](../docs/TOOLBOX_STORAGE_LOADING_FIX.md)，迁移与空间清理见[实施记录](../docs/TOOLBOX_DATA_MIGRATION_PLAN.md)，此前业务验证范围见[本机验收记录](../docs/TOOLBOX_V1_LOCAL_ACCEPTANCE.md)。
+这里是桌面工具箱实现目录，包含桌面、托盘、统一任务/浏览器调度、结果存储和四个业务入口。当前交付0.1.5本机验收版，商机中心统一使用Python API引擎，已接入业务模块集中于`engines`；清理、控制及恢复的实证见[重组记录](../docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)。人工工作台双来源流程见[实施记录](../docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。
 
 普通用户见[使用说明](用户使用说明.md)；构建与安装验收见[Windows 构建说明](windows/README.md)。
 
@@ -27,6 +27,11 @@ node --test toolbox/tests/sdk.test.cjs
 
 ## 入口与边界
 
+- `engines/business`：Python商机API解析、受管会话、分页/数据检查、检查点和三种报告。
+- `python_worker.py`：隐藏Python后台进程，与Node使用同一NDJSON协议、任务身份及心跳约束。
+- `engines/top200`、`engines/video`：迁入后的Node业务模块；`engines/downloader`为Python下载核心与许可。
+- `engines/shared/edge.js`：未接入的搜索词工具仍使用的源码共用模块，不进入当前安装包。
+
 - `host/paths.py`：显式创建数据目录和 RunContext，导入不写文件。
 - `host/store.py`：SQLite schema 1，任务摘要、候选幂等、精确共享与删除事务。文件操作不能嵌套于未提交事务；最终文件登记前保留 staging 原件及小型登记意图，重启协调后可重试。
 - `host/state.py`：唯一 engine-state envelope 与状态机。
@@ -34,6 +39,6 @@ node --test toolbox/tests/sdk.test.cjs
 - `host/worker.py` 与 `node/worker.cjs`：隐藏 Node、NDJSON、心跳、请求身份过滤和关闭宽限；Windows Job Object 管理其子进程。
 - `node/sdk.cjs`：业务适配器调用边界，人工单条下载不能写任务检查点。
 
-worker 的 `--test-adapter` 只用于本地公共验证，不属于桌面桥接参数；生产模式仅接受四个固定工具 ID，未接入方法返回不支持。候选视频登记必须提供实际的视频检查器；测试替身不能用于发布。
+Node worker的`--test-adapter`只用于本地公共验证；生产Node只处理TOP200及两种视频操作，Python只处理商机中心。冻结程序的`--business-worker`为宿主隐藏子进程入口，不创建桌面窗口。候选视频登记必须提供实际的视频检查器；测试替身不能用于发布。旧DOM商机结果只读兼容，继续/重试前拒绝不兼容检查点，不转换或覆盖旧任务。
 
 完整依据见 [接口约定](../docs/TOOLBOX_V1_CONTRACTS.md) 和 [实施清单](../docs/TOOLBOX_V1_EXECUTION.md)。

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from .errors import ToolboxError
 from .logs import redact
-from .worker import NodeWorker
+from .worker import NodeWorker, PythonWorker
 
 
 class Operations:
@@ -60,7 +60,8 @@ class Operations:
                 self._runs.pop(operation_id, None)
 
     def _call(self, kind, parameters, context, handle=None):
-        with NodeWorker(self.node, self.entrypoint, on_log=self.logs.write, test_adapter=self.test_adapter) as worker:
+        Worker = PythonWorker if self.descriptors.get(context['toolId'], {}).get('engine') == 'python' and not self.test_adapter else NodeWorker
+        with Worker(self.node, self.entrypoint, on_log=self.logs.write, test_adapter=self.test_adapter) as worker:
             if handle:
                 with self._lock:
                     handle['worker'] = worker

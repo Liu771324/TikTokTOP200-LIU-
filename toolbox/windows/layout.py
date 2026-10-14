@@ -9,24 +9,24 @@ from pathlib import Path
 APP_NAME = 'ScriptAllToolbox'
 INSTALL_MUTEX = r'Local\ScriptAllToolbox.InstallGuard'
 RUNTIMES = {'python': '3.13.2', 'node': '24.19.0', 'ffmpeg': '7.1', 'pyinstaller': '6.22.2'}
-CORE = '抖音视频下载器（免 Python 版）/douyin_downloader_core.py'
+CORE = 'toolbox/engines/downloader/douyin_downloader_core.py'
 BUSINESS_FILES = {
-    '商机中心': ('task-store.js', 'category_discovery.js', 'edge.js', 'collect_v4.js',
-        'collect_utils.js', 'report_output.js', 'collector_retry.js', 'collection_control.js',
-        'growth_prefilter.js', 'business_table.js', 'export_excel.js', 'product_grouping.js',
-        'batch-runner.js', 'toolbox_task.js'),
-    'Tiktok TOP200': ('collector.js', 'edge.js', 'task-store.js', 'collector-utils.js', 'export-excel.js'),
-    'Tiktok video': ('collector.js', 'edge.js', 'video-fingerprint.js', 'task-store.js',
+    'toolbox/engines/top200': ('collector.js', 'edge.js', 'task-store.js', 'collector-utils.js', 'export-excel.js'),
+    'toolbox/engines/video': ('collector.js', 'edge.js', 'video-fingerprint.js', 'task-store.js',
         'compass-page.js', 'toolbox-runtime.js'),
 }
-NODE_FILES = ('worker.cjs', 'sdk.cjs', 'browser-client.cjs', 'douyin-page.cjs', 'adapters/business-center.cjs',
+NODE_FILES = ('worker.cjs', 'sdk.cjs', 'browser-client.cjs', 'douyin-page.cjs',
     'adapters/top200.cjs', 'adapters/video-ranking.cjs', 'adapters/manual-video.cjs')
 WEB_FILES = ('index.html', 'app.js', 'style.css')
+PYTHON_FILES = ('toolbox/python_worker.py', 'toolbox/engines/__init__.py',
+    'toolbox/engines/business/__init__.py', 'toolbox/engines/business/adapter.py',
+    'toolbox/engines/business/parser.py', 'toolbox/engines/business/transport.py',
+    'toolbox/engines/business/report.py', 'toolbox/engines/downloader/__init__.py')
 SOURCE_FILES = tuple(f'{directory}/{name}' for directory, names in BUSINESS_FILES.items() for name in names) + tuple(
     f'toolbox/node/{name}' for name in NODE_FILES) + tuple(f'toolbox/web/{name}' for name in WEB_FILES) + (
-        'toolbox/tools.json', CORE, 'toolbox/THIRD_PARTY_NOTICES.md', '抖音视频下载器（免 Python 版）/THIRD_PARTY_NOTICES.md')
+        'toolbox/tools.json', CORE, 'toolbox/THIRD_PARTY_NOTICES.md', 'toolbox/engines/downloader/THIRD_PARTY_NOTICES.md') + PYTHON_FILES
 RUNTIME_LICENSES = ('python', 'proxy_tools')
-FROZEN_DATA_FILES = tuple(name for name in SOURCE_FILES if name != CORE)
+FROZEN_DATA_FILES = tuple(name for name in SOURCE_FILES if not name.endswith('.py'))
 REQUIRE = re.compile(r"\brequire\s*\(\s*['\"]([^'\"]+)['\"]\s*\)")
 
 
@@ -121,7 +121,7 @@ def validate_bundle(directory):
         found = [item.relative_to(internal).as_posix() for item in internal.rglob(name)]
         if found != [relative]:
             raise ValueError(f'Expected one shared {name}: {found}')
-    for folder in (*BUSINESS_FILES, str(Path(CORE).parent)):
+    for folder in (*BUSINESS_FILES, Path(CORE).parent.as_posix()):
         actual = {item.relative_to(internal).as_posix() for item in (internal / folder).rglob('*') if item.is_file()}
         expected_files = {name for name in FROZEN_DATA_FILES if name.startswith(folder + '/')}
         if actual != expected_files:
@@ -147,7 +147,7 @@ def validate_bundle(directory):
             raise ValueError(f'Missing runtime license: {name}')
     if (internal / 'toolbox/tests').exists() or any(internal.rglob('.local-browsers')):
         raise ValueError('Development fixtures or downloaded browsers entered the release')
-    if any((internal / name).exists() for name in (CORE, 'toolbox/windows/protection')) or any(
+    if any((internal / name).exists() for name in (CORE, *PYTHON_FILES, 'toolbox/windows/protection')) or any(
             item.suffix == '.map' for folder in ('toolbox/web', 'toolbox/node', *BUSINESS_FILES)
             for item in (internal / folder).rglob('*') if item.is_file()):
         raise ValueError('Raw protected source or development maps entered the release')

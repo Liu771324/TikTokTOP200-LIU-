@@ -238,7 +238,7 @@ class RuntimeTests(unittest.TestCase):
                 kernel.CloseHandle(child_handle)
 
     def test_real_ffmpeg_rejects_text_and_reads_generated_video(self):
-        ffmpeg = Path(__file__).parents[2] / '抖音视频下载器（免 Python 版）/ffmpeg.exe'
+        ffmpeg = Path(os.environ.get('TOOLBOX_FFMPEG', Path(__file__).parents[1] / 'runtime/ffmpeg.exe'))
         if not ffmpeg.is_file():
             self.skipTest('development FFmpeg binary not present')
         invalid = self.paths.resolve('scratch/invalid.mp4')

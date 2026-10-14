@@ -339,7 +339,8 @@ class Store:
                     match = None
         artifact_id = match['id'] if match else uuid4().hex
         artifact_hash = match['sha256'] if match else digest
-        suffix = {"video": ".mp4", "excel": ".xlsx", "text": ".txt"}[kind]
+        text_suffix = source.suffix.lower() if source.suffix.lower() in {'.json', '.md'} else '.txt'
+        suffix = {"video": ".mp4", "excel": ".xlsx", "text": text_suffix}[kind]
         relative = match['relpath'] if match else f"media/{digest}.mp4" if kind == 'video' else f"tasks/{task_id}/results/{artifact_id}{suffix}"
         destination = self.paths.resolve(relative)
         repair = match and disposition == 'exact_reuse' and (match['status'] != 'ready' or not destination.is_file() or destination.stat().st_size != match['size'])

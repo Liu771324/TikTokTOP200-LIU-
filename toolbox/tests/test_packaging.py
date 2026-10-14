@@ -54,7 +54,8 @@ class SourceLayoutTests(unittest.TestCase):
 
     def test_whitelist_unique_and_only_business_javascript(self):
         self.assertEqual(len(layout.SOURCE_FILES), len(set(layout.SOURCE_FILES)))
-        self.assertEqual(len(layout.SOURCE_FILES), 39)
+        self.assertIn('toolbox/engines/business/adapter.py', layout.SOURCE_FILES)
+        self.assertIn('toolbox/python_worker.py', layout.SOURCE_FILES)
         for folder, names in layout.BUSINESS_FILES.items():
             for name in names:
                 self.assertEqual(Path(name).suffix, '.js')
@@ -99,8 +100,8 @@ class SourceLayoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source_fixture(root)
-            write(root, '商机中心/task-store.js', "require('./server')")
-            write(root, '商机中心/server.js', '')
+            write(root, 'toolbox/engines/top200/task-store.js', "require('./server')")
+            write(root, 'toolbox/engines/top200/server.js', '')
             with self.assertRaisesRegex(ValueError, 'Unlisted local dependency'):
                 layout.validate_sources(root)
 
@@ -108,7 +109,7 @@ class SourceLayoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source_fixture(root)
-            write(root, '商机中心/task-store.js', "require('express')")
+            write(root, 'toolbox/engines/top200/task-store.js', "require('express')")
             with self.assertRaisesRegex(ValueError, 'Unlisted npm dependency'):
                 layout.validate_sources(root)
 
@@ -116,7 +117,7 @@ class SourceLayoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source_fixture(root)
-            write(root, '商机中心/task-store.js', "require('./edge');require('node:fs');require('exceljs')")
+            write(root, 'toolbox/engines/top200/task-store.js', "require('./edge');require('node:fs');require('exceljs')")
             self.assertTrue(layout.validate_sources(root))
 
     def test_core_dynamic_playwright_import_collected(self):
@@ -329,8 +330,9 @@ class SpecTests(unittest.TestCase):
                 'PyInstaller.utils.hooks': hooks, 'layout': layout}), patch.dict('os.environ', environment), patch.object(sys, 'path', sys.path.copy()):
             exec(compile((WINDOWS / 'toolbox.spec').read_text(encoding='utf-8'), str(WINDOWS / 'toolbox.spec'), 'exec'), namespace)
         args = captured['analysis']
-        self.assertEqual(args['pathex'], [str(ROOT), str(ROOT / Path(layout.CORE).parent)])
-        self.assertIn('douyin_downloader_core', args['hiddenimports'])
+        self.assertEqual(args['pathex'], [str(ROOT)])
+        self.assertIn('toolbox.engines.downloader.douyin_downloader_core', args['hiddenimports'])
+        self.assertIn('toolbox.python_worker', args['hiddenimports'])
         for hidden in ('playwright.sync_api', 'webview.platforms.winforms', 'webview.platforms.edgechromium', 'pystray._win32'):
             self.assertIn(hidden, args['hiddenimports'])
         self.assertEqual(sum(destination == 'node_modules' for source, destination in args['datas']), 1)

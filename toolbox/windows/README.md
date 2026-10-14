@@ -70,29 +70,27 @@ ScriptAllToolbox/
     node_modules/                    # 只安装一份共享生产依赖
     playwright/driver/package/       # Python Playwright 的 JS 驱动
     toolbox/
-      node/                          # worker、SDK、浏览器客户端、4 个适配器
+      node/                          # worker、SDK、浏览器客户端、3 个 Node 适配器
       web/                           # 工具箱统一界面
       tools.json
       release-info.json
       THIRD_PARTY_NOTICES.md
+      engines/
+        top200/                      # 白名单 Node 业务模块
+        video/                       # 白名单 Node 业务模块
+        downloader/THIRD_PARTY_NOTICES.md
       runtime/
         node.exe
         ffmpeg.exe
         licenses/node/许可证文件
         licenses/ffmpeg/许可证文件
-    商机中心/                        # 仅 layout.py 指定的业务 JS
-    Tiktok TOP200/                    # 同上
-    Tiktok video/                     # 同上
-    抖音视频下载器（免 Python 版）/
-      douyin_downloader_core.py
-      THIRD_PARTY_NOTICES.md
 ```
 
-精确文件白名单见 `layout.py` 的 `SOURCE_FILES` / `BUSINESS_FILES`；新增本地 `require()` 依赖必须同时进入白名单，否则构建前失败。业务目录与工具箱前端/Node 目录在产物中也按白名单复查。旧 data、旧服务器、旧 UI、工具自带 node_modules、测试、用户浏览器配置和旧 exe 均不是构建输入。
+精确文件白名单见`layout.py`的`SOURCE_FILES`、`BUSINESS_FILES`及`PYTHON_FILES`；新增本地`require()`依赖必须同时进入白名单，否则构建前失败。商机引擎、Python后台入口和下载核心冻结为字节码，不携带原始`.py`。旧data、独立服务器/UI、重复node_modules、测试、local-archive、用户浏览器配置和旧exe均不进入安装包。
 
 Python Playwright 1.58.0 与 Node playwright-core 1.58.2 的 JS 驱动分别保留各自版本。Python Playwright 自带的第二份 `driver/node.exe` 会在 Analysis 后过滤，通过 `PLAYWRIGHT_NODEJS_PATH` 使用共享 Node；不打包 Chromium，也不执行浏览器下载。共享 npm 安装内的传递依赖可能包含嵌套 `node_modules`，这是 npm 的依赖解析结果，不是第二套工具安装。
 
-冻结后的 `application.ROOT` 指向 `_internal`，工具相对路径保持不变。用户数据继续使用 `%LOCALAPPDATA%\ScriptAllToolbox`，与默认程序目录 `%LOCALAPPDATA%\Programs\ScriptAllToolbox` 分开。
+冻结后的`application.ROOT`指向`_internal`。数据位置由`DataLocation`用户设置确定，本机为`D:\前端\ai\电商工具箱\数据`；程序为同一总目录下的`程序`，旧版本的LOCALAPPDATA位置仅作迁移历史记录。
 
 ## 输出与可追溯清单
 

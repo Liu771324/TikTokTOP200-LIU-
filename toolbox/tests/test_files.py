@@ -46,6 +46,25 @@ class ExportTests(unittest.TestCase):
     def assert_counts(self, result, exported=0, skipped=0, failed=0):
         self.assertEqual((result['exported'], result['skipped'], result['failed']), (exported, skipped, failed))
 
+    def test_python_business_reports_keep_json_and_markdown_extensions(self):
+        task = self.task('business-center')
+        context = self.store.paths.task_context(task, '')
+        ids = []
+        for extension in ('.json', '.md'):
+            source = Path(context['artifactStagingRoot']) / ('business-report' + extension)
+            source.write_text('{}' if extension == '.json' else '# 商机报告', encoding='utf-8')
+            registered = self.store.register(task['id'], task['attempt'], {
+                'candidateId': 'report' + extension, 'kind': 'text', 'role': 'report' + extension,
+                'relpath': self.store.paths.relative(source), 'displayName': '商机中心' + extension})
+            ids.append(registered['artifactId'])
+            self.assertEqual(self.store.artifact_path(ids[-1]).suffix, extension)
+        self.assert_counts(self.files.export(ids, task['id']), exported=2)
+        self.assertEqual({path.name for path in self.out.iterdir()}, {'商机中心.json', '商机中心.md'})
+        selected = self.out / '另存.json'
+        self.files.window.create_file_dialog.return_value = (str(selected),)
+        self.assert_counts(self.files.export([ids[0]], task['id']), exported=1)
+        self.assertEqual(self.files.window.create_file_dialog.call_args.kwargs['save_filename'], '商机中心.json')
+
     def test_export_location_starts_empty_and_selection_persists(self):
         self.assertEqual(self.files.get_export_location(), {'path': None})
         self.assertEqual(self.files.choose_export_location(), {'path': str(self.out), 'cancelled': False})
