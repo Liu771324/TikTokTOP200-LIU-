@@ -19,6 +19,7 @@ SOURCES = {
     'top200': 'https://compass.jinritemai.com/shop/chance/merchandise-product-rank',
     'video-ranking': 'https://compass.jinritemai.com/shop/chance/merchandise-product-rank',
     'manual-video': 'https://compass.jinritemai.com/shop/chance/merchandise-product-rank',
+    'douyin': 'https://www.douyin.com/',
 }
 
 

@@ -19,7 +19,7 @@ class Operations:
         self._closed = False
 
     def submit(self, kind, tool_id, parameters):
-        if kind not in {'discover', 'capture_page'} or not self.descriptors.get(tool_id, {}).get('available'):
+        if kind not in {'discover', 'capture_page', 'resolve_items'} or not self.descriptors.get(tool_id, {}).get('available'):
             raise ToolboxError('UNSUPPORTED_OPERATION', '此工具尚未支持该操作。')
         with self._lock:
             if self._closed or len(self._runs) >= 20:
@@ -48,7 +48,7 @@ class Operations:
                            'dataRoot': str(self.store.paths.root), 'scratchRoot': str(scratch), 'browser': session}
                 self.events.emit('operation.state', {'operationId': operation_id, 'kind': kind, 'state': 'running'})
                 result = self._call(kind, parameters, context, handle)
-                if kind == 'capture_page' and self.on_capture:
+                if kind in {'capture_page', 'resolve_items'} and self.on_capture:
                     result = self.on_capture(result)
                 self.events.emit('operation.state', {'operationId': operation_id, 'kind': kind, 'state': 'completed', 'result': result})
         except Exception as exc:

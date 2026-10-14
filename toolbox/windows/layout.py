@@ -19,7 +19,7 @@ BUSINESS_FILES = {
     'Tiktok video': ('collector.js', 'edge.js', 'video-fingerprint.js', 'task-store.js',
         'compass-page.js', 'toolbox-runtime.js'),
 }
-NODE_FILES = ('worker.cjs', 'sdk.cjs', 'browser-client.cjs', 'adapters/business-center.cjs',
+NODE_FILES = ('worker.cjs', 'sdk.cjs', 'browser-client.cjs', 'douyin-page.cjs', 'adapters/business-center.cjs',
     'adapters/top200.cjs', 'adapters/video-ranking.cjs', 'adapters/manual-video.cjs')
 WEB_FILES = ('index.html', 'app.js', 'style.css')
 SOURCE_FILES = tuple(f'{directory}/{name}' for directory, names in BUSINESS_FILES.items() for name in names) + tuple(

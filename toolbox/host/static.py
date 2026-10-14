@@ -1,11 +1,13 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from uuid import uuid4
+from .capture import IMAGE_DOMAINS
 
 
 class StaticServer:
     def __init__(self, directory):
         token = uuid4().hex
+        image_sources = ' '.join(f'https://{domain} https://*.{domain}' for domain in IMAGE_DOMAINS)
         assets = {f'/{token}/{name}': ((directory / name).read_bytes(), mime) for name, mime in (
             ('index.html', 'text/html; charset=utf-8'), ('app.js', 'text/javascript; charset=utf-8'),
             ('style.css', 'text/css; charset=utf-8'))}
@@ -20,7 +22,7 @@ class StaticServer:
                 self.send_header('Content-Type', mime)
                 self.send_header('Content-Length', str(len(body)))
                 self.send_header('Cache-Control', 'no-store')
-                self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+                self.send_header('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: " + image_sources + "; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
                 self.send_header('X-Content-Type-Options', 'nosniff')
                 self.end_headers()
                 self.wfile.write(body)

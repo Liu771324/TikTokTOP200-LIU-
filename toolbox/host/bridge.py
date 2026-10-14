@@ -9,7 +9,8 @@ FIELDS = {
     'tasks.control': {'taskId', 'command'}, 'tasks.results': {'taskId', 'offset', 'limit', 'section'},
     'tasks.artifacts': {'taskId', 'offset', 'limit'},
     'tasks.logs': {'taskId', 'afterSeq', 'limit'}, 'capture.read_page': {'pageId'}, 'capture.add_text': {'text'},
-    'capture.list': {'offset', 'limit'}, 'capture.remove': {'itemIds'}, 'capture.copy': {'itemIds', 'field'},
+    'capture.list': {'offset', 'limit', 'query'}, 'capture.remove': {'itemIds'}, 'capture.copy': {'itemIds', 'field'},
+    'capture.resolve': {'itemIds'},
     'capture.export': {'itemIds'}, 'artifacts.open': {'artifactId'}, 'artifacts.export': {'artifactIds', 'taskId'},
     'storage.get_usage': set(), 'storage.preview_delete': {'taskIds'}, 'storage.confirm_delete': {'token'},
     'storage.clean_cache': set(),
@@ -95,8 +96,13 @@ class Bridge:
             return a.operations.submit('capture_page', 'manual-video', {'pageId': p['pageId']})
         if action == 'capture.add_text':
             return a.capture.add_text(p['text'])
+        if action == 'capture.resolve':
+            items = a.capture.selected(p['itemIds'])
+            if len(items) > 10:
+                raise ToolboxError('INVALID_PARAMETERS', '每批最多提取10条链接。')
+            return a.operations.submit('resolve_items', 'manual-video', {'items': items})
         if action == 'capture.list':
-            return a.capture.list(offset, limit)
+            return a.capture.list(offset, limit, p.get('query', ''))
         if action == 'capture.remove':
             return a.capture.remove(p['itemIds'])
         if action == 'capture.copy':

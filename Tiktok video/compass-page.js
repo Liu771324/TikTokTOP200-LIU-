@@ -33,7 +33,7 @@ function identity(card) {
 
 // This function is serialized into the leased page; it only reads visible DOM.
 function readCard(element) {
-  const text = element.querySelector('[class*=videoName-]')?.textContent || element.getAttribute('title') || '';
+  const text = element.querySelector('[class*=videoName-]')?.textContent || element.getAttribute('title') || element.querySelector('img')?.alt || '';
   const link = element.matches('a[href]') ? element : element.querySelector('a[href]');
   return { title: text.trim(), videoId: element.getAttribute('data-video-id') || element.getAttribute('data-aweme-id') || '',
     href: link?.href || '', cover: element.querySelector('img')?.currentSrc || element.querySelector('img')?.src || '' };
@@ -59,7 +59,7 @@ async function pageIdentity(page) {
   });
 }
 
-async function readProductCards(page, rowIndex, boundary = async () => {}) {
+async function readProductCards(page, rowIndex, boundary = async () => {}, options = {}) {
   const row = page.locator(ROWS).nth(rowIndex);
   const visible = row.locator('[class*=videoWrapper-]:visible');
   const cards = [];
@@ -68,10 +68,11 @@ async function readProductCards(page, rowIndex, boundary = async () => {}) {
     await boundary();
     const card = visible.nth(index);
     let value = await card.evaluate(readCard);
-    if (!value.title) {
+    if (!value.title && options.readTitles !== false && (options.titleBudget === undefined || options.titleBudget > 0)) {
+      if (options.titleBudget !== undefined) options.titleBudget -= 1;
       await card.hover({ timeout: 3000 });
       let title = '';
-      for (let attempt = 0; attempt < 5; attempt += 1) {
+      for (let attempt = 0; attempt < (options.titleAttempts || 5); attempt += 1) {
         await boundary();
         title = await page.evaluate(cover => {
           const canonical = value => { try { const url = new URL(value); return url.origin + url.pathname; } catch { return ''; } };
@@ -83,7 +84,7 @@ async function readProductCards(page, rowIndex, boundary = async () => {}) {
           return matches.length === 1 ? matches[0].querySelector('[class*=videoName-]')?.textContent?.trim() || '' : '';
         }, value.cover);
         if (title) break;
-        await page.waitForTimeout(200);
+        await page.waitForTimeout(options.titlePause || 200);
       }
       value = { ...value, title };
     }
@@ -113,18 +114,19 @@ async function readProductCards(page, rowIndex, boundary = async () => {}) {
 
 function productKey(product) { return hash([product.productId || '', clean(product.productName), clean(product.shopName)]); }
 
-async function snapshot(page, pageId, boundary) {
+async function snapshot(page, pageId, boundary, options = {}) {
   const state = await pageIdentity(page);
   const rows = [];
   for (let index = 0; index < state.products.length; index += 1) {
-    rows.push({ ...state.products[index], productKey: productKey(state.products[index]), cards: await readProductCards(page, index, boundary) });
+    rows.push({ ...state.products[index], productKey: productKey(state.products[index]), cards: await readProductCards(page, index, boundary, options) });
   }
   const after = await pageIdentity(page);
   const pageKey = value => JSON.stringify([value.products, value.page, value.category, value.tabs, value.brands]);
   if (pageKey(state) !== pageKey(after)) throw changed();
   const key = hash([pageId, state.page, state.category, state.tabs, state.brands,
     rows.map(row => [row.productKey, row.cards.map(card => card.cardKey)])]);
-  return { ...state, rows, key };
+  const pageFingerprint = hash([pageId, state.page, state.category, state.tabs, state.brands, state.products]);
+  return { ...state, rows, key, pageKey: pageFingerprint };
 }
 
 function captureItems(view, pageId, sourcePage) {
@@ -134,10 +136,12 @@ function captureItems(view, pageId, sourcePage) {
     for (const card of row.cards) frequencies.set(card.cardKey, (frequencies.get(card.cardKey) || 0) + 1);
     for (const card of row.cards) {
       if (!card.observable || frequencies.get(card.cardKey) !== 1) continue;
-      const videoKey = card.strong ? `video:${card.videoId}` : `snapshot:${view.key}`;
+      const videoKey = card.strong ? `video:${card.videoId}` : card.cover ? `page:${view.pageKey || view.key}` : `snapshot:${view.key}`;
       const mediaUrl = view.player?.videoId && view.player.videoId === card.videoId && view.player.url?.startsWith('https://') ? view.player.url : null;
       items.push({ sourceKey: card.strong ? `compass:video:${card.videoId}` : `compass:${row.productKey}:${videoKey}:${card.cardKey}`, sourceKind: 'compass_ranking',
-        sourcePage, providerId: card.videoId, title: card.title || `商品“${row.productName}”的视频（标题未读取）`, publicUrl: card.publicUrl, ...(mediaUrl ? { mediaUrl } : {}),
+        sourcePage, providerId: card.videoId, title: card.title || '视频标题未读取', publicUrl: card.publicUrl, ...(mediaUrl ? { mediaUrl } : {}),
+        details: { productName: row.productName, shopName: row.shopName, coverUrl: card.cover || '', sourceLabel: '罗盘短视频榜',
+          titleKnown: Boolean(card.title), videoIndex: row.cards.indexOf(card) + 1 },
         locator: { pageId, productKey: row.productKey, ...(row.productId ? { productId: row.productId } : {}),
           ...(card.videoId ? { videoId: card.videoId } : {}), videoKey, cardKey: card.cardKey, category: view.category, rankingType: 'video' } });
     }
@@ -149,6 +153,7 @@ function locate(view, item) {
   const locator = item.locator;
   if (locator?.category && locator.category !== view.category) throw changed();
   if (!locator || (locator.videoKey?.startsWith('snapshot:') && locator.videoKey !== `snapshot:${view.key}`)) throw changed();
+  if (locator.videoKey?.startsWith('page:') && locator.videoKey !== `page:${view.pageKey || view.key}`) throw changed();
   const products = view.rows.filter(row => row.productKey === locator.productKey);
   if (products.length !== 1) throw changed('商品已变化或定位不唯一，请重新读取当前页面。');
   const matches = products[0].cards.filter(card => card.cardKey === locator.cardKey && (!locator.videoId || card.videoId === locator.videoId));

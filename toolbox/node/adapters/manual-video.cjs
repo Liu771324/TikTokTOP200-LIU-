@@ -3,8 +3,9 @@ const compass = require('../../../Tiktok video/compass-page');
 const { createCollector, safePart } = require('../../../Tiktok video/collector');
 const runtime = require('../../../Tiktok video/toolbox-runtime');
 const browserClient = require('../browser-client.cjs');
+const douyin = require('../douyin-page.cjs');
 
-const descriptor = { id: 'manual-video', parameterVersion: 1, operations: ['capture_page', 'download_item', 'read_results'] };
+const descriptor = { id: 'manual-video', parameterVersion: 1, operations: ['capture_page', 'resolve_items', 'download_item', 'read_results'] };
 
 function createAdapter(overrides = {}) {
   const pages = overrides.compass || compass;
@@ -16,14 +17,50 @@ function createAdapter(overrides = {}) {
     async capture_page(parameters, context, api) {
       const connection = await connect(context);
       try {
-        const page = await selectPage(connection.browser, parameters.pageId || context.browser?.pageId, pages.accepts);
+        const page = await selectPage(connection.browser, parameters.pageId || context.browser?.pageId, url => pages.accepts(url) || douyin.accepts(url));
+        if (douyin.accepts(page.url())) {
+          const items = await douyin.captureItems(page);
+          if (!items.length) throw runtime.fail('UNSUPPORTED_SOURCE', '当前页没有识别到已加载的视频，请打开视频详情、作者作品或视频搜索结果后重读。');
+          return bounded(items, '当前已加载的抖音视频');
+        }
         await runtime.ensureReady(page, factory(), api, false);
         const session = await page.context().newCDPSession(page);
         let pageId;
         try { pageId = (await session.send('Target.getTargetInfo')).targetInfo.targetId; } finally { await session.detach(); }
-        const view = await pages.snapshot(page, pageId, () => api.boundary());
+        const view = await pages.snapshot(page, pageId, () => api.boundary(), { titleBudget: 200, titleAttempts: 3, titlePause: 150 });
         const items = pages.captureItems(view, pageId, page.url().split('?')[0]);
-        return { items: items.slice(0, 200), scope: `当前已加载的罗盘短视频榜卡片${items.length > 200 ? '（本次最多读取200条）' : ''}` };
+        if (!items.length) throw runtime.fail('UNSUPPORTED_SOURCE', '当前页没有识别到短视频卡片，请切到罗盘短视频榜并等待视频加载后重读。');
+        return bounded(items, '当前已加载的罗盘视频，不限制上榜趋势');
+      } finally { await connection.disconnect(); }
+    },
+    async resolve_items(parameters, context, api) {
+      if (!Array.isArray(parameters.items) || !parameters.items.length || parameters.items.length > 10) throw runtime.fail('INVALID_PARAMETERS', '每批最多提取10条链接。');
+      const connection = await connect(context);
+      const items = [], views = new Map();
+      let failed = 0;
+      try {
+        for (const item of parameters.items) {
+          await api.boundary();
+          if (item.sourceKind === 'public' && item.publicUrl) { items.push(item); continue; }
+          let page;
+          try {
+            if (item.sourceKind !== 'compass_ranking' || !item.locator?.pageId) throw runtime.fail('UNSUPPORTED_SOURCE', '请重新读取视频来源。');
+            page = await selectPage(connection.browser, item.locator.pageId, pages.accepts);
+            await runtime.ensureReady(page, factory(), api, false);
+            if (!views.has(item.locator.pageId)) views.set(item.locator.pageId,
+              await pages.snapshot(page, item.locator.pageId, () => api.boundary(), { readTitles: false }));
+            const card = pages.locate(views.get(item.locator.pageId), item);
+            const player = await pages.playCard(page, card);
+            items.push({ ...item, title: player.caption || item.title, mediaUrl: player.videoUrl,
+              details: { ...item.details, titleKnown: Boolean(player.caption) || item.details?.titleKnown === true, linkError: '' } });
+          } catch (error) {
+            if (api.control.cancelled) throw error;
+            api.emit?.('log', { message: `提取链接失败：${error.code || 'MEDIA_UNAVAILABLE'} ${error.message}` });
+            failed += 1;
+            items.push({ ...item, details: { ...item.details, linkError: '提取失败，请确认原页面和视频可播放后重试。' } });
+          } finally { if (page) await pages.closePlayer(page).catch(() => {}); }
+        }
+        return { items, failed, scope: '所选视频链接' };
       } finally { await connection.disconnect(); }
     },
     async download_item(parameters, context, api) {
@@ -38,7 +75,7 @@ function createAdapter(overrides = {}) {
         const engine = factory({ isCancelled: () => api.control.cancelled, ffmpegPath: context.ffmpegPath });
         await runtime.ensureReady(page, engine, api);
         await api.boundary();
-        const view = await pages.snapshot(page, item.locator.pageId, () => api.boundary());
+        const view = await pages.snapshot(page, item.locator.pageId, () => api.boundary(), { readTitles: false });
         const card = pages.locate(view, item);
         const player = await pages.playCard(page, card);
         file = await runtime.candidateFromPlayer(page, player, context, engine, api);
@@ -59,6 +96,12 @@ function createAdapter(overrides = {}) {
       return runtime.paginate(items, parameters);
     },
   };
+}
+
+function bounded(items, scope) {
+  const selected = items.slice(0, 200);
+  while (selected.length && Buffer.byteLength(JSON.stringify({ items: selected, scope }), 'utf8') > 900 * 1024) selected.pop();
+  return { items: selected, scope: scope + (selected.length < items.length ? `（本次读取前${selected.length}条，请翻页或调整页面后继续读取）` : '') };
 }
 
 module.exports = { createAdapter, ...createAdapter() };

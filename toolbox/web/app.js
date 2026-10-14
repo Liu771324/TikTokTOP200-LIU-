@@ -21,6 +21,9 @@ const state = {
   options: {},
   selected: new Set(),
   captureOffset: 0,
+  captureQuery: "",
+  captureText: "",
+  captureOperations: new Map(),
   task: null,
   artifactOffset: 0,
   resultOffset: 0,
@@ -443,7 +446,9 @@ async function toolForm() {
       const check = el("input");
       check.type = "checkbox";
       check.name = "only30dGrowth";
-      grid.append(field("仅看近 30 天增长", check));
+      const toggle = el("label", undefined, "check option-toggle");
+      toggle.append(check, el("span", "仅看近 30 天增长"));
+      grid.append(toggle);
     } else {
       grid.append(
         field(
@@ -534,11 +539,14 @@ async function capture() {
   const box = panel("添加视频");
   const text = el("textarea");
   text.placeholder = "粘贴抖音分享链接或完整分享文案，可一次添加多个";
+  text.value = state.captureText;
+  text.addEventListener("input", () => { state.captureText = text.value; });
   box.append(field("分享链接 / 文案", text, true));
   const actions = el("div", undefined, "toolbar");
   actions.append(
     button("添加到待选列表", async () => {
       const result = await call("capture.add_text", { text: text.value });
+      state.captureText = "";
       notice(
         `已添加 ${result.added} 条，更新 ${result.updated} 条，忽略 ${result.rejectedCount} 个不支持链接。`,
       );
@@ -546,55 +554,71 @@ async function capture() {
     }),
   );
   const read = button("读取当前页", async () => {
-    const pages = (await call("browser.list_pages")).filter(page => page.source === "compass_ranking" || page.source === "compass");
+    const pages = (await call("browser.list_pages")).filter(page => ["compass_ranking", "compass", "douyin"].includes(page.source));
     const dialog = $("#dialog-content");
     $("#dialog").dataset.kind = "pages";
-    dialog.replaceChildren(el("h2", "选择受管浏览器标签页"));
+    dialog.replaceChildren(el("h2", "选择要读取的视频页面"), el("p", "支持罗盘短视频榜，以及抖音视频详情、作者主页、搜索和推荐中已加载的视频。", "hint"));
     for (const page of pages)
       dialog.append(
-        button(`${page.title || "未命名页面"} · ${page.source}`, async () => {
-          await call("capture.read_page", { pageId: page.id });
+        button(`${page.source === "douyin" ? "抖音" : "罗盘"} · ${page.title || "未命名页面"}`, async () => {
+          const result = await call("capture.read_page", { pageId: page.id });
+          state.captureOperations.set(result.operationId, "capture_page");
           $("#dialog").close();
-          notice("已加入当前页读取队列。");
+          await capture();
+          notice("正在读取所选页面，完成后会更新待选列表。");
         }),
       );
     if (!pages.length)
       dialog.append(
-        el("p", "没有可读页面。请先打开平台并浏览到包含视频的商品榜。"),
+        el("p", "没有可读页面。请先打开罗盘或抖音，浏览到有视频的页面。"),
       );
     $("#dialog").showModal();
   });
-  read.disabled = !tool.available;
-  actions.append(read);
+  read.disabled = !tool.available || [...state.captureOperations.values()].includes("capture_page");
+  actions.append(button("打开罗盘", async () => { await call("browser.open", { source: "manual-video" }); notice("在罗盘短视频榜选择商品和筛选条件后，回到这里读取页面。"); }),
+    button("打开抖音", async () => { await call("browser.open", { source: "douyin" }); notice("在抖音浏览需要的视频后，回到这里读取页面。"); }), read);
   box.append(
     el("div", undefined, "divider"),
     actions,
-    el("p", "当前页读取仅处理已加载内容；手动翻页后可以继续追加。", "hint"),
+    el("p", "读取当前已加载视频，不限制罗盘上榜趋势；翻页或浏览新视频后可继续读取。罗盘没有公开分享链接时，可先提取播放链接或直接下载。", "hint"),
   );
+  if (state.captureOperations.size) box.append(el("p", `正在处理 ${state.captureOperations.size} 批读取/链接提取，请稍候……`, "hint"));
   content.append(box);
   const data = await call("capture.list", {
     offset: state.captureOffset,
     limit: 50,
+    query: state.captureQuery,
   });
   if (state.view !== "manual-video" || !content.contains(box)) return;
-  const list = panel(`待选列表 · ${data.total} 条`);
-  const controls = el("div", undefined, "toolbar");
-  controls.append(
-    button(
-      "下载所选",
-      async () => {
-        await call("tasks.create", {
-          toolId: "manual-video",
-          itemIds: [...state.selected],
-        });
-        await navigate("tasks");
-        notice("所选视频已加入下载队列。");
-      },
-      "primary",
-    ),
-    button("复制标题", () => copy("title")),
-    button("复制公开链接", () => copy("publicUrl")),
-    button("复制临时链接", () => copy("temporaryUrl")),
+  const list = panel();
+  const head = el("div", undefined, "capture-heading");
+  const count = el("strong");
+  head.append(el("h2", `待选视频 · ${data.total} 条${state.captureQuery ? "筛选结果" : ""}`), count);
+  const filter = el("form", undefined, "capture-filter");
+  const search = el("input");
+  search.type = "search"; search.maxLength = 100; search.placeholder = "筛选标题、商品或作者";
+  search.setAttribute("aria-label", search.placeholder); search.value = state.captureQuery;
+  const submit = el("button", "筛选"); submit.type = "submit";
+  const reset = button("清空筛选", async () => { state.captureQuery = ""; state.captureOffset = 0; await capture(); }); reset.type = "button";
+  filter.append(search, submit, reset);
+  filter.addEventListener("submit", async event => {
+    event.preventDefault(); state.captureQuery = search.value.trim(); state.captureOffset = 0;
+    try { await capture(); } catch (error) { notice(error.message, true); }
+  });
+  const controls = el("div", undefined, "toolbar capture-controls");
+  const download = button("下载所选", () => downloadCaptured([...state.selected]), "primary");
+  const resolve = button("提取所选链接", () => resolveCaptured([...state.selected]));
+  const selectPage = button("选择本页", () => {
+    for (const item of data.items) { if (state.selected.size >= 200) break; state.selected.add(item.id); }
+    for (const check of list.querySelectorAll('[data-capture-id]')) check.checked = state.selected.has(check.dataset.captureId);
+    updateControls();
+  });
+  const clear = button("清空选择", () => {
+    state.selected.clear(); for (const check of list.querySelectorAll('[data-capture-id]')) check.checked = false;
+    updateControls();
+  });
+  const selectionActions = [download, resolve,
+    button("复制标题", () => copy("title")), button("复制链接", () => copy("link")),
     button("导出列表", async () => {
       const result = await call("capture.export", { itemIds: [...state.selected] });
       notice(result.cancelled ? "已取消导出。" : `已导出 ${result.exported} 条，跳过 ${result.skipped} 条，失败 ${result.failed} 条。`, result.failed > 0);
@@ -602,40 +626,70 @@ async function capture() {
     button("移除所选", async () => {
       await call("capture.remove", { itemIds: [...state.selected] });
       state.selected.clear();
+      state.captureOffset = 0;
       await capture();
-    }),
-  );
-  const updateControls = () => {for(const b of controls.children) b.disabled=!state.selected.size; controls.firstChild.disabled = !tool.available || !state.selected.size;};
+    }), clear];
+  controls.append(selectPage, ...selectionActions);
+  const updateControls = () => {
+    count.textContent = `已选 ${state.selected.size} 条 / 最多 200 条`;
+    for (const action of selectionActions) action.disabled = !state.selected.size;
+    download.disabled = !tool.available || !state.selected.size;
+    resolve.disabled = !tool.available || !state.selected.size || [...state.captureOperations.values()].includes("resolve_items");
+    selectPage.disabled = !data.items.length || state.selected.size >= 200;
+  };
   updateControls();
-  list.append(controls, el("div", undefined, "divider"));
+  list.append(head, filter, controls, el("p", "按封面和标题选择具体视频。公开链接可直接复制；罗盘播放链接需先提取，可能随平台会话过期。", "hint"));
+  const groups = new Map();
   for (const item of data.items) {
-    const row = el("div", undefined, "artifact");
+    const details = item.details || {};
+    const product = details.productName || item.title.match(/^商品“(.+?)”的视频/)?.[1];
+    const groupKey = item.locator?.productKey || `${item.sourcePage}:${details.authorName || product || ""}`;
+    if (!groups.has(groupKey)) groups.set(groupKey, { title: product || details.authorName || (item.sourceKind === "compass_ranking" ? "罗盘视频 · 重新读取可补充商品信息" : "抖音视频"), items: [] });
+    groups.get(groupKey).items.push(item);
+  }
+  for (const group of groups.values()) {
+    const section = el("section", undefined, "capture-group");
+    const groupHead = el("div", undefined, "capture-group-heading");
+    groupHead.append(el("h3", group.title), el("small", `本页 ${group.items.length} 条`)); section.append(groupHead);
+    group.items.sort((a, b) => (a.details?.videoIndex || 0) - (b.details?.videoIndex || 0));
+    for (const item of group.items) {
+    const details = item.details || {};
+    const row = el("div", undefined, "capture-video");
     const check = el("input");
     check.type = "checkbox";
+    check.dataset.captureId = item.id;
     check.checked = state.selected.has(item.id);
-    check.setAttribute("aria-label", `选择 ${item.title}`);
+    check.setAttribute("aria-label", `选择 ${details.productName || details.authorName || item.title}${details.videoIndex ? ` 第${details.videoIndex}条视频` : ""}`);
     check.addEventListener("change", () => {
       if(check.checked && state.selected.size >= 200) {check.checked=false;notice("每次最多选择200条视频。",true);return;}
       check.checked ? state.selected.add(item.id) : state.selected.delete(item.id);
       updateControls();
     });
-    row.append(
-      check,
-      el("span", item.title),
-      el(
-        "small",
-        item.publicUrl
-          ? "公开页面"
-          : item.temporaryAvailable
-            ? "临时媒体"
-            : "需重新读取",
-      ),
-    );
-    list.append(row);
+    const cover = el("div", undefined, "capture-cover");
+    if (details.coverUrl) {
+      const image = el("img"); image.src = details.coverUrl; image.loading = "lazy";
+      image.alt = "视频封面"; image.referrerPolicy = "no-referrer";
+      image.addEventListener("error", () => { cover.replaceChildren(el("span", "封面不可用")); }); cover.append(image);
+    } else cover.append(el("span", "暂无封面"));
+    const info = el("div", undefined, "capture-video-info");
+    info.append(el("small", [details.sourceLabel || (item.sourceKind === "compass_ranking" ? "罗盘" : "抖音"), details.videoIndex ? `第 ${details.videoIndex} 条` : "", details.duration].filter(Boolean).join(" · ")),
+      el("h4", details.titleKnown === false || /标题未读取/.test(item.title) ? "视频标题未读取" : item.title),
+      el("p", [details.authorName && `作者：${details.authorName}`, details.shopName && `店铺：${details.shopName}`].filter(Boolean).join(" · "), "hint"),
+      el("small", item.providerId ? `视频 ID：${item.providerId}` : `卡片：${(item.locator?.cardKey || item.id).slice(0, 10)}`),
+      el("small", `读取于 ${time(item.capturedAt)}`),
+      el("p", details.linkError || (item.publicUrl ? "可复制公开链接" : item.temporaryAvailable ? "播放链接已提取，可能过期" : "可从原页面提取链接并下载"), "capture-link-state"));
+    const itemActions = el("div", undefined, "capture-video-actions");
+    const itemDownload = button("下载这条", () => downloadCaptured([item.id])); itemDownload.disabled = !tool.available;
+    const itemCopy = button("复制链接", () => copy("link", [item.id])); itemCopy.disabled = !item.publicUrl && !item.temporaryAvailable;
+    itemActions.append(itemDownload, itemCopy);
+    if (!item.publicUrl) { const extract = button("提取链接", () => resolveCaptured([item.id])); extract.disabled = !tool.available || [...state.captureOperations.values()].includes("resolve_items"); itemActions.append(extract); }
+    row.append(check, cover, info, itemActions); section.append(row);
+    }
+    list.append(section);
   }
   if (!data.total)
     list.append(
-      el("p", "添加链接，或在受管浏览器打开商品榜后读取视频。", "hint"),
+      el("p", state.captureQuery ? "没有匹配的视频，请修改筛选文字或清空筛选。" : "打开罗盘或抖音读取视频，也可粘贴分享链接添加。", "hint"),
     );
   list.append(
     pager(data.total, state.captureOffset, 50, async (offset) => {
@@ -645,9 +699,25 @@ async function capture() {
   );
   content.append(list);
 }
-async function copy(field) {
+async function downloadCaptured(itemIds) {
+  await call("tasks.create", { toolId: "manual-video", itemIds });
+  await navigate("tasks"); notice("所选视频已加入下载队列。");
+}
+async function resolveCaptured(itemIds) {
+  let submitted = 0;
+  try {
+    for (let index = 0; index < itemIds.length; index += 10) {
+      const batch = itemIds.slice(index, index + 10);
+      const result = await call("capture.resolve", { itemIds: batch });
+      state.captureOperations.set(result.operationId, "resolve_items"); submitted += batch.length;
+    }
+    notice(`已提交 ${submitted} 条链接提取，完成后可复制链接。`);
+  } catch (error) { notice(`已提交 ${submitted} 条，其余未提交：${error.message}`, true); }
+  await capture();
+}
+async function copy(field, itemIds = [...state.selected]) {
   const result = await call("capture.copy", {
-    itemIds: [...state.selected],
+    itemIds,
     field,
   });
   notice(
@@ -765,19 +835,27 @@ async function poll() {
         event.type === "operation.state" &&
         event.data.state === "completed"
       ) {
+        const captureOperation = state.captureOperations.delete(event.data.operationId);
+        if (captureOperation && state.view === "manual-video") changed = true;
         if (event.data.kind === "discover") {
           for (const options of Object.values(state.options))
             if (options.operationId === event.data.operationId)
               options.result = event.data.result;
           changed = state.options[state.view]?.operationId === event.data.operationId;
         }
-        notice("读取完成。");
+        if (["capture_page", "resolve_items"].includes(event.data.kind)) {
+          const result = event.data.result || {};
+          notice(event.data.kind === "resolve_items" ? `链接提取完成${result.failed ? `，${result.failed} 条未成功，请查看对应视频提示` : "，可复制链接"}。`
+            : `已读取 ${result.added || 0} 条新视频，更新 ${result.updated || 0} 条。${result.scope || ""}`, Boolean(result.failed));
+        } else notice("读取完成。");
         if (event.data.kind === "capture_page") changed = state.view === "manual-video";
       } else if (
         event.type === "operation.state" &&
         event.data.state === "failed"
-      )
+      ) {
+        if (state.captureOperations.delete(event.data.operationId) && state.view === "manual-video") changed = true;
         notice(event.data.error.message, true);
+      }
       else if (event.type === "task.state" || event.type === "task.progress") {
         if (state.view === "tasks") changed = true;
         if (event.taskId === state.task && $("#dialog").open && $("#dialog").dataset.kind === "task") {

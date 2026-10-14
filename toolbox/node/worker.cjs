@@ -69,7 +69,7 @@ function handle(message) {
   }
   if (message.type === 'shutdown') { reply('ack', { command: 'shutdown' }); stop(); return; }
   if (closing || active) { reply('error', { code: 'BROWSER_BUSY', message: '工作者正在执行其他操作。', retryable: true }); return; }
-  if (!['run', 'discover', 'capture_page', 'download_item', 'read_results'].includes(message.type)) {
+  if (!['run', 'discover', 'capture_page', 'resolve_items', 'download_item', 'read_results'].includes(message.type)) {
     reply('error', { code: 'UNSUPPORTED_OPERATION', message: '不支持该命令。', retryable: false }); return;
   }
   const context = message.context;

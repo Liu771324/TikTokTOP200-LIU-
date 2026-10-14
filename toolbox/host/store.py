@@ -90,6 +90,9 @@ class Store:
                 id TEXT PRIMARY KEY, source_key TEXT UNIQUE NOT NULL, source_kind TEXT NOT NULL,
                 source_page TEXT NOT NULL, provider_id TEXT, title TEXT NOT NULL, public_url TEXT,
                 link_kind TEXT NOT NULL, locator_json TEXT NOT NULL, captured_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS capture_item_details(
+                item_id TEXT PRIMARY KEY REFERENCES capture_items(id) ON DELETE CASCADE,
+                metadata_json TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS pending_task_deletions(task_id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS artifact_fingerprints(
                 artifact_id TEXT PRIMARY KEY REFERENCES artifacts(id) ON DELETE CASCADE,

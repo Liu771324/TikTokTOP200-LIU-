@@ -8,6 +8,35 @@ from .errors import ToolboxError
 from .events import now
 from .store import encode, page
 
+IMAGE_DOMAINS = ('douyinpic.com', 'douyincdn.com', 'pstatp.com', 'byteimg.com', 'ibytedtos.com', 'bytecdn.cn', 'ecombdimg.com')
+
+
+def display_details(value):
+    allowed = {'productName', 'shopName', 'authorName', 'coverUrl', 'sourceLabel', 'titleKnown', 'videoIndex', 'duration', 'linkError'}
+    if type(value) is not dict or value.keys() - allowed:
+        raise ToolboxError('WORKER_PROTOCOL_ERROR', '视频展示信息格式无效。')
+    result = {}
+    for key, item in value.items():
+        if key == 'titleKnown':
+            valid = type(item) is bool
+        elif key == 'videoIndex':
+            valid = type(item) is int and 1 <= item <= 10000
+        else:
+            valid = isinstance(item, str) and len(item) <= (4096 if key == 'coverUrl' else 2000)
+        if not valid:
+            raise ToolboxError('WORKER_PROTOCOL_ERROR', '视频展示信息超出允许范围。')
+        if key == 'coverUrl' and item:
+            try:
+                url = urlsplit(item)
+                host = url.hostname or ''
+                if (url.scheme != 'https' or url.username or url.password or url.port not in (None, 443)
+                        or not any(host == domain or host.endswith('.' + domain) for domain in IMAGE_DOMAINS)):
+                    item = ''
+            except ValueError:
+                item = ''
+        result[key] = item
+    return result
+
 
 class Capture:
     def __init__(self, store, events, core):
@@ -68,15 +97,23 @@ class Capture:
                             if not re.fullmatch(r'/video/\d+/?', parsed.path):
                                 raise ToolboxError('WORKER_PROTOCOL_ERROR', '罗盘公开链接不是可识别的视频页面。')
                             public_url = 'https://www.douyin.com' + parsed.path.rstrip('/')
-                    old = db.execute('SELECT id FROM capture_items WHERE source_key=?', (source_key,)).fetchone()
+                    old = db.execute('SELECT id,title FROM capture_items WHERE source_key=?', (source_key,)).fetchone()
                     item_id = old[0] if old else uuid4().hex
+                    details = display_details(item.get('details', {}))
+                    title = str(item.get('title', '视频'))[:2000]
+                    if old and 'details' not in item:
+                        previous = db.execute('SELECT metadata_json FROM capture_item_details WHERE item_id=?', (item_id,)).fetchone()
+                        if previous:
+                            details = json.loads(previous[0])
+                            title = old['title']
                     provider_id = item.get('providerId')
                     if provider_id is not None and (not isinstance(provider_id, (str, int)) or '://' in str(provider_id)):
                         raise ToolboxError('WORKER_PROTOCOL_ERROR', '视频身份格式无效。')
                     values = (item_id, source_key, item['sourceKind'], source_page[:200],
-                              item.get('providerId'), str(item.get('title', '视频'))[:2000], public_url,
+                              item.get('providerId'), title, public_url,
                               'public_page' if public_url else 'temporary_media' if item.get('mediaUrl') else 'unavailable', encode(locator), now())
                     db.execute('INSERT OR REPLACE INTO capture_items VALUES(?,?,?,?,?,?,?,?,?,?)', values)
+                    db.execute('INSERT OR REPLACE INTO capture_item_details VALUES(?,?)', (item_id, encode(details)))
                     if item.get('mediaUrl'):
                         temporary[item_id] = item['mediaUrl']
                     else:
@@ -92,20 +129,28 @@ class Capture:
                 else:
                     self._temporary.pop(item_id, None)
         self.events.emit('capture.updated', {'added': added, 'updated': updated})
-        return {'added': added, 'updated': updated, 'scope': result.get('scope', '当前已加载内容')}
+        return {'added': added, 'updated': updated, 'scope': result.get('scope', '当前已加载内容'), 'failed': result.get('failed', 0)}
 
-    def list(self, offset=0, limit=50):
+    def list(self, offset=0, limit=50, query=''):
         page(offset, limit, 200)
+        if not isinstance(query, str) or len(query) > 100:
+            raise ToolboxError('INVALID_PARAMETERS', '筛选文字不能超过一百字。')
         with self.store._lock:
-            total = self.store._db.execute('SELECT count(*) FROM capture_items').fetchone()[0]
-            rows = self.store._db.execute('SELECT * FROM capture_items ORDER BY captured_at DESC,id LIMIT ? OFFSET ?', (limit, offset)).fetchall()
+            source = ' FROM capture_items c LEFT JOIN capture_item_details d ON d.item_id=c.id'
+            arguments = ()
+            if query.strip():
+                source += " WHERE c.title LIKE ? OR json_extract(d.metadata_json,'$.productName') LIKE ? OR json_extract(d.metadata_json,'$.authorName') LIKE ?"
+                arguments = ('%' + query.strip() + '%',) * 3
+            total = self.store._db.execute('SELECT count(*)' + source, arguments).fetchone()[0]
+            rows = self.store._db.execute('SELECT c.*,d.metadata_json AS details_json' + source + ' ORDER BY c.captured_at DESC,c.id LIMIT ? OFFSET ?', (*arguments, limit, offset)).fetchall()
             return {'items': [self._item(row) for row in rows], 'total': total}
 
     def _item(self, row):
         return {'id': row['id'], 'sourceKey': row['source_key'], 'sourceKind': row['source_kind'],
                 'sourcePage': row['source_page'], 'providerId': row['provider_id'], 'title': row['title'],
                 'publicUrl': row['public_url'], 'linkKind': row['link_kind'], 'locator': json.loads(row['locator_json']),
-                'capturedAt': row['captured_at'], 'temporaryAvailable': row['id'] in self._temporary}
+                'capturedAt': row['captured_at'], 'temporaryAvailable': row['id'] in self._temporary,
+                'details': json.loads(row['details_json']) if row['details_json'] else {}}
 
     def selected(self, item_ids):
         if type(item_ids) is not list or not item_ids or len(item_ids) > 200 or any(not isinstance(i, str) for i in item_ids):
@@ -113,7 +158,7 @@ class Capture:
         result = []
         with self.store._lock:
             for item_id in dict.fromkeys(item_ids):
-                row = self.store._db.execute('SELECT * FROM capture_items WHERE id=?', (item_id,)).fetchone()
+                row = self.store._db.execute('SELECT c.*,d.metadata_json AS details_json FROM capture_items c LEFT JOIN capture_item_details d ON d.item_id=c.id WHERE c.id=?', (item_id,)).fetchone()
                 if row is None:
                     raise ToolboxError('INVALID_PARAMETERS', '条目已删除，请刷新列表。')
                 result.append(self._item(row))
@@ -129,8 +174,18 @@ class Capture:
         return {'removed': len(items)}
 
     def copy_text(self, item_ids, field):
-        if field not in {'title', 'publicUrl', 'temporaryUrl'}:
+        if field not in {'title', 'publicUrl', 'temporaryUrl', 'link'}:
             raise ToolboxError('INVALID_PARAMETERS', '复制字段无效。')
         items = self.selected(item_ids)
-        values = [self._temporary.get(i['id']) if field == 'temporaryUrl' else i.get(field) for i in items]
+        values = []
+        for item in items:
+            if field == 'link':
+                value = item.get('publicUrl') or self._temporary.get(item['id'])
+            elif field == 'temporaryUrl':
+                value = self._temporary.get(item['id'])
+            elif field == 'title' and (item['details'].get('titleKnown') is False or '标题未读取' in item['title'] or item['title'] == '抖音分享视频'):
+                value = None
+            else:
+                value = item.get(field)
+            values.append(value)
         return '\n'.join(str(value) for value in values if value), sum(not value for value in values)
