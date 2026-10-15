@@ -8,7 +8,8 @@ function mockApi() {
   const tools = [{toolId:'top200',name:'商品 TOP200',available:true},
     {toolId:'product-title',name:'商品标题工作台',available:true}];
   const events = []; let seq = 0, preview = 0;
-  const shops = [{id:'11',name:'样本店'}];
+  const shops = [{id:'11',name:'样本店'}, ...Array.from({length:49},(_,i) => ({id:String(100+i),
+    name:i % 3 === 0 ? `致恒堂禾米滋补养生食品专卖店${i+1}` : `花草店${i+1}`}))];
   const productStatuses = [{value:'',label:'所有'},{value:'on',label:'在售'}];
   window.calls = [];
   window.pywebview = {api:{invoke:async (action,p) => {
@@ -40,20 +41,48 @@ function mockApi() {
   fs.mkdirSync(output,{recursive:true});
   const browser = await chromium.launch({headless:true,executablePath});
   try {
-    const context = await browser.newContext({viewport:{width:1280,height:800}});
+    const context = await browser.newContext({viewport:{width:1280,height:800},deviceScaleFactor:1.5});
     await context.addInitScript(mockApi);
     const page = await context.newPage(), errors = [];
     page.on('pageerror',error => errors.push(error.message));
     await page.goto(url);
+    await page.getByText('还没有任务',{exact:true}).waitFor();
     await page.getByRole('button',{name:'商品标题工作台',exact:true}).click();
+    const initialGap = await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('#content button')];
+      const find = text => buttons.find(button => button.textContent === text).getBoundingClientRect();
+      return find('预览商品修改').top - Math.max(find('打开小猪 / 登录').bottom,find('读取店铺和商品状态').bottom);
+    });
+    await page.screenshot({path:path.join(output,'title-empty-layout.png'),fullPage:true});
     await page.getByRole('button',{name:'选择 .xls / .xlsx 表格',exact:true}).click();
     await page.getByText('测试标题.xlsx · 1 组 · 1 个新标题 · 跳过 0 行',{exact:true}).waitFor();
     await page.getByRole('button',{name:'读取店铺和商品状态',exact:true}).click();
     const shop = page.getByRole('checkbox',{name:'样本店',exact:true});
     await shop.waitFor(); assert.equal(await shop.isChecked(),false);
+    const layout = await page.locator('.title-shops').evaluate(list => {
+      const rows = [...list.children].map(label => label.getBoundingClientRect());
+      return {display:getComputedStyle(list).display,count:rows.length,height:list.clientHeight,scroll:list.scrollHeight,
+        equalColumns:Math.abs(rows[0].width-rows[1].width)<1 && Math.abs(rows[0].top-rows[1].top)<1};
+    });
+    console.log(JSON.stringify({initialGap,shopLayout:layout}));
+    assert.ok(initialGap >= 16,'未读取店铺时，预览操作与平台按钮至少留16px间距');
+    assert.equal(layout.display,'grid','店铺应按等宽网格对齐');
+    assert.equal(layout.count,50);
+    assert.ok(layout.equalColumns,'长短店名使用相同列宽');
+    assert.ok(layout.height <= 340 && layout.scroll > layout.height,'多店铺列表限制高度并可滚动');
+    for (const [width,columns] of [[1000,2],[1700,3],[1280,3]]) {
+      await page.setViewportSize({width,height:800});
+      const measured = await page.locator('.title-shops').evaluate(list => ({
+        columns:getComputedStyle(list).gridTemplateColumns.split(' ').length,
+        overflow:[...list.querySelectorAll('label span')].some(span => span.scrollWidth > span.clientWidth+1)}));
+      assert.equal(measured.columns,columns);
+      assert.equal(measured.overflow,false,'长店名应完整换行，无横向溢出');
+    }
+    await page.screenshot({path:path.join(output,'title-shops-layout.png'),fullPage:true});
     await page.getByRole('button',{name:'预览商品修改',exact:true}).click();
     await page.locator('#notice').getByText('请至少选择一家店铺。',{exact:true}).waitFor();
     await shop.check();
+    await page.getByText('共 50 家店铺 · 已选 1 家',{exact:true}).waitFor();
     await page.getByRole('button',{name:'预览商品修改',exact:true}).click();
     await page.getByText('正在排队或查询所选店铺，尚未修改商品。多组原标题可能需要几分钟。',{exact:true}).waitFor();
     await page.locator('#title-plan').getByText('商品-0',{exact:true}).waitFor();
@@ -75,6 +104,7 @@ function mockApi() {
     await page.screenshot({path:path.join(output,'title-preview-900.png')});
     assert.deepEqual(errors,[]);
     console.log(JSON.stringify({titleImport:true,shopDefaultEmpty:true,exactProductPreview:true,pagination:true,
-      confirmationCancelled:true,scopeInvalidatesPreview:true,directTaskCreate:false,responsive:true,pageErrors:errors}));
+      confirmationCancelled:true,scopeInvalidatesPreview:true,directTaskCreate:false,responsive:true,
+      alignedShops:50,initialButtonGap:initialGap,highDpi:1.5,pageErrors:errors}));
   } finally {await browser.close();}
 })().catch(error => {console.error(error);process.exitCode=1;});

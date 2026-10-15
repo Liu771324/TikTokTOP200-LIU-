@@ -467,12 +467,17 @@ async function titleWorkbench() {
   if (options?.error) scope.append(el('p', options.error, 'hint'));
   const choices = options?.result;
   if (choices) {
+    const shopSummary = el('p', undefined, 'hint title-shop-summary');
+    const updateShopSummary = () => {shopSummary.textContent = `共 ${choices.shops.length} 家店铺 · 已选 ${choices.shops.filter(shop => state.titleShops.has(shop.id)).length} 家`;};
+    updateShopSummary();
     const list = el('div', undefined, 'title-shops');
+    list.setAttribute('role','group'); list.setAttribute('aria-label','店铺选择');
     for (const shop of choices.shops || []) {
       const label = el('label', undefined, 'check');
       const check = el('input'); check.type = 'checkbox'; check.checked = state.titleShops.has(shop.id); check.disabled = busy;
       check.addEventListener('change', () => {
         check.checked ? state.titleShops.add(shop.id) : state.titleShops.delete(shop.id);
+        updateShopSummary();
         invalidateTitlePlan();
       });
       label.append(check, el('span', shop.name)); list.append(label);
@@ -484,8 +489,8 @@ async function titleWorkbench() {
     if ([...statuses.options].some(option => option.value === state.titleStatus)) statuses.value = state.titleStatus;
     else state.titleStatus = statuses.value;
     statuses.addEventListener('change', () => {state.titleStatus = statuses.value; invalidateTitlePlan();});
-    const statusField = field('商品状态', statuses); statusField.classList.add('title-status');
-    scope.append(list, statusField);
+    const statusField = field('商品状态', statuses);
+    scope.append(shopSummary, list, statusField);
   }
   const preview = button('预览商品修改', async () => {
     if (!state.titleInput) throw Error('请先选择标题表格。');
@@ -498,7 +503,9 @@ async function titleWorkbench() {
     if (state.view === 'product-title') await titleWorkbench();
   }, 'primary');
   preview.disabled = busy || !input || !choices;
-  scope.append(preview);
+  const previewActions = el('div', undefined, 'toolbar title-preview-actions');
+  previewActions.append(preview);
+  scope.append(previewActions);
   const plan = panel('3. 核对商品的新旧标题'); plan.id = 'title-plan';
   content.append(importing, scope, plan);
   if (busy) {
