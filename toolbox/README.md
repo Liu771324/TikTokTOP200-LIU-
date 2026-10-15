@@ -40,6 +40,6 @@ node --test toolbox/tests/sdk.test.cjs
 - `host/worker.py` 与 `node/worker.cjs`：隐藏 Node、NDJSON、心跳、请求身份过滤和关闭宽限；Windows Job Object 管理其子进程。
 - `node/sdk.cjs`：业务适配器调用边界，人工单条下载不能写任务检查点。
 
-Node worker的`--test-adapter`只用于本地公共验证；生产Node只处理TOP200及两种视频操作，Python只处理商机中心。冻结程序的`--business-worker`为宿主隐藏子进程入口，不创建桌面窗口。候选视频登记必须提供实际的视频检查器；测试替身不能用于发布。旧DOM商机结果只读兼容，继续/重试前拒绝不兼容检查点，不转换或覆盖旧任务。
+Node worker的`--test-adapter`只用于本地公共验证；生产Node处理TOP200、两种视频操作和商品标题，Python处理商机中心。冻结程序的`--business-worker`为宿主隐藏子进程入口，不创建桌面窗口。候选视频登记必须提供实际的视频检查器；测试替身不能用于发布。旧DOM商机结果只读兼容，继续/重试前拒绝不兼容检查点，不转换或覆盖旧任务。
 
 完整依据见 [接口约定](../docs/TOOLBOX_V1_CONTRACTS.md) 和 [实施清单](../docs/TOOLBOX_V1_EXECUTION.md)。

@@ -70,12 +70,13 @@ ScriptAllToolbox/
     node_modules/                    # 只安装一份共享生产依赖
     playwright/driver/package/       # Python Playwright 的 JS 驱动
     toolbox/
-      node/                          # worker、SDK、浏览器客户端、3 个 Node 适配器
+      node/                          # worker、SDK、浏览器客户端、4 个 Node 适配器
       web/                           # 工具箱统一界面
       tools.json
       release-info.json
       THIRD_PARTY_NOTICES.md
       engines/
+        product-title/               # 标题表格、冻结计划、保存核对及报告
         top200/                      # 白名单 Node 业务模块
         video/                       # 白名单 Node 业务模块
         downloader/THIRD_PARTY_NOTICES.md

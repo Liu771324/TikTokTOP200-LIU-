@@ -65,6 +65,8 @@ async function mockApi(fixtures) {
       let rows = fixtures[task.toolId].expected[section];
       if (!rows) return {ok:false, error:{message:'测试检测到不支持的结果分区'}};
       if (task.toolId === 'business-center' && section === 'results') rows = Array.from({length:51}, (_, i) => ({...rows[0], keyword:`商机第${i + 1}条`}));
+      // The shared historical fixture predates Python page/attempt fields.
+      if (task.toolId === 'business-center' && section === 'failures') rows = rows.map(row => ({...row,page:1,attempts:2}));
       data = {items:rows.slice(p.offset, p.offset + p.limit), total:rows.length};
     }
     if (action === 'tasks.artifacts') {
