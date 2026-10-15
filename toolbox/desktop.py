@@ -162,9 +162,9 @@ def main(acceptance_runner=None):
                 window.events.loaded.wait(15)
                 import time
                 ui_deadline = time.monotonic() + 8
-                while window.evaluate_js("document.querySelectorAll('#tools button').length") != 4 and time.monotonic() < ui_deadline:
+                while window.evaluate_js("document.querySelectorAll('#tools button').length") != len(app.descriptors) and time.monotonic() < ui_deadline:
                     time.sleep(.05)
-                assert window.evaluate_js("document.querySelectorAll('#tools button').length") == 4
+                assert window.evaluate_js("document.querySelectorAll('#tools button').length") == len(app.descriptors)
                 assert bridge.invoke('app.get_state')['ok']
                 assert not bridge.invoke('execute', {'command': 'arbitrary'})['ok']
                 close_window()

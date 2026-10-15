@@ -18,7 +18,7 @@ from .paths import atomic_json
 from .state import ACTIVE, RECOVERABLE, TRANSITIONS
 from .fingerprints import best_match, validate_fingerprint
 
-TOOLS = {"business-center", "top200", "video-ranking", "manual-video"}
+TOOLS = {"business-center", "top200", "video-ranking", "manual-video", "product-title"}
 
 
 def file_operation(method):

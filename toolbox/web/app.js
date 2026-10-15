@@ -12,6 +12,8 @@ const labels = {
   failed: "任务失败",
   completed_with_errors: "部分失败",
   completed: "已完成",
+  pending: "待处理", saving: "提交中 · 待核对", success: "保存成功",
+  uncertain: "结果待核对", unchanged: "无需修改", unmodified: "未修改",
 };
 const state = {
   view: "tasks",
@@ -29,6 +31,12 @@ const state = {
   resultOffset: 0,
   resultSection: 'results',
   files: new Set(),
+  titleInput: null,
+  titleShops: new Set(),
+  titleStatus: '',
+  titlePlan: null,
+  titleOperation: null,
+  titleOffset: 0,
 };
 const content = $("#content");
 function el(tag, text, className) {
@@ -122,6 +130,7 @@ async function navigate(view) {
     top200: "采集商品榜前 200 名，保留榜单变化与商品链接。",
     "video-ranking": "按趋势条件采集商品视频，视频与文案集中管理。",
     "manual-video": "读取当前页或粘贴分享链接，勾选后下载。",
+    "product-title": "选择标题表格，核对具体商品的新旧标题后确认修改。",
   }[view];
   await render();
 }
@@ -129,6 +138,7 @@ async function render() {
   if (state.view === "tasks") return tasks();
   if (state.view === "storage") return storage();
   if (state.view === "manual-video") return capture();
+  if (state.view === "product-title") return titleWorkbench();
   return toolForm();
 }
 async function tasks() {
@@ -214,6 +224,7 @@ async function taskDetail(taskId) {
   progress.dataset.toolId = task.toolId;
   box.append(progress);
   if (task.state === "waiting_user") box.append(el("p", "请在受管浏览器完成登录或验证，然后点击“继续”。等待期间该任务保留浏览器使用权。", "hint"));
+  if (task.toolId === 'product-title') box.append(el('p', '标题任务不自动继续或重试。若商品显示“结果待核对”，请先在平台核对；已成功保存的标题不会回滚。停止时当前提交最多需要约一分钟核对。', 'hint'));
   const actions = el("div", undefined, "toolbar");
   const caps = task.capabilities;
   for (const [command, text, enabled] of [
@@ -323,6 +334,7 @@ function resultTable(items) {
   if (items.some(item => item.yesterdaySource)) names.yesterday = '昨日（反推）';
   if (items.some(item => item.indicatorIdBinding)) names.growth = '今日环比';
   names.classification = '分类';
+  Object.assign(names, {productId:'商品 ID', before:'修改前标题', target:'目标新标题', excelRow:'表格行号'});
   const columns = Object.keys(names).filter(key => items.some(item => key in item));
   if (!columns.length) return el("p", "结果已保存，详情可查看交付文件和任务日志。", "hint");
   const head = el("tr");
@@ -410,6 +422,117 @@ async function discover(toolId) {
   const { operationId } = await call("tools.discover", { toolId });
   state.options[toolId] = { operationId };
   notice("已加入读取队列，请在受管浏览器完成登录。");
+}
+function invalidateTitlePlan() {
+  state.titlePlan = null;
+  state.titleOffset = 0;
+  $('#title-plan')?.replaceChildren(el('p', '范围已变化，请重新预览商品修改。', 'hint'));
+}
+async function titleWorkbench() {
+  content.replaceChildren();
+  const importing = panel('1. 选择标题表格');
+  const input = state.titleInput;
+  const busy = Boolean(state.titleOperation);
+  const choose = button(input ? '更换表格' : '选择 .xls / .xlsx 表格', async () => {
+    const data = await call('title.choose_input');
+    if (data.cancelled) return;
+    state.titleInput = data;
+    invalidateTitlePlan();
+    if (state.view === 'product-title') await titleWorkbench();
+  });
+  choose.disabled = busy;
+  importing.append(el('p', 'Sheet1 第一行为“原标题”和“新标题”。原标题留空时沿用上一组，新标题为空时跳过。表格正文不会改写。', 'hint'), choose);
+  if (input) {
+    importing.append(el('p', `${input.fileName} · ${input.groupCount} 组 · ${input.titleCount} 个新标题 · 跳过 ${input.skippedCount} 行`));
+    const rows = (input.groups || []).flatMap(group => group.titles.map((title, i) => ({
+      before: group.original, target: title, excelRow: group.rows[i]})));
+    importing.append(resultTable(rows));
+    if (input.previewTruncated) importing.append(el('p', '表格预览仅显示前 100 行；商品预览会处理完整表格。', 'hint'));
+  }
+  const scope = panel('2. 选择店铺与商品状态');
+  const read = button('读取店铺和商品状态', async () => {
+    invalidateTitlePlan();
+    state.titleShops.clear();
+    state.titleStatus = '';
+    await discover('product-title');
+    if (state.view === 'product-title') await titleWorkbench();
+  });
+  const options = state.options['product-title'];
+  const discovering = options?.operationId && !options.result && !options.error;
+  read.disabled = busy || Boolean(discovering);
+  const scopeActions = el('div', undefined, 'toolbar');
+  scopeActions.append(button('打开小猪 / 登录', () => call('browser.open', {source:'title-platform'})), read);
+  scope.append(el('p', '需要在专用浏览器登录抖店和小猪。店铺默认不勾选；只查询所选范围。', 'hint'), scopeActions);
+  if (discovering) scope.append(el('p', '正在排队读取店铺，请稍候…', 'hint'));
+  if (options?.error) scope.append(el('p', options.error, 'hint'));
+  const choices = options?.result;
+  if (choices) {
+    const list = el('div', undefined, 'title-shops');
+    for (const shop of choices.shops || []) {
+      const label = el('label', undefined, 'check');
+      const check = el('input'); check.type = 'checkbox'; check.checked = state.titleShops.has(shop.id); check.disabled = busy;
+      check.addEventListener('change', () => {
+        check.checked ? state.titleShops.add(shop.id) : state.titleShops.delete(shop.id);
+        invalidateTitlePlan();
+      });
+      label.append(check, el('span', shop.name)); list.append(label);
+    }
+    const statuses = el('select'); statuses.disabled = busy;
+    for (const status of choices.productStatuses || []) {
+      const option = el('option', status.label); option.value = status.value; statuses.append(option);
+    }
+    if ([...statuses.options].some(option => option.value === state.titleStatus)) statuses.value = state.titleStatus;
+    else state.titleStatus = statuses.value;
+    statuses.addEventListener('change', () => {state.titleStatus = statuses.value; invalidateTitlePlan();});
+    const statusField = field('商品状态', statuses); statusField.classList.add('title-status');
+    scope.append(list, statusField);
+  }
+  const preview = button('预览商品修改', async () => {
+    if (!state.titleInput) throw Error('请先选择标题表格。');
+    const shops = (choices?.shops || []).filter(shop => state.titleShops.has(shop.id));
+    if (!shops.length) throw Error('请至少选择一家店铺。');
+    const productStatus = choices.productStatuses.find(status => status.value === state.titleStatus);
+    invalidateTitlePlan();
+    const result = await call('title.preview', {inputId:state.titleInput.inputId, shops, productStatus});
+    state.titleOperation = result.operationId;
+    if (state.view === 'product-title') await titleWorkbench();
+  }, 'primary');
+  preview.disabled = busy || !input || !choices;
+  scope.append(preview);
+  const plan = panel('3. 核对商品的新旧标题'); plan.id = 'title-plan';
+  content.append(importing, scope, plan);
+  if (busy) {
+    const loading = el('div', undefined, 'title-loading'); loading.setAttribute('role', 'status');
+    loading.append(el('div', undefined, 'loading-spinner'), el('p', '正在排队或查询所选店铺，尚未修改商品。多组原标题可能需要几分钟。'));
+    plan.append(loading, button('取消预览', async () => {
+      await call('title.cancel_preview', {operationId:state.titleOperation});
+      state.titleOperation = null;
+      if (state.view === 'product-title') await titleWorkbench();
+    }));
+    return;
+  }
+  const approved = state.titlePlan;
+  if (!approved) {plan.append(el('p', '先完成表格和范围选择，再预览具体商品。', 'hint')); return;}
+  const summary = approved.summary;
+  plan.append(el('p', `匹配 ${summary.productCount} 件 · 拟修改 ${summary.changeCount} 件 · 无需修改 ${summary.unchangedCount || 0} 件 · 标题不足保留 ${summary.unmodifiedCount || 0} 件 · 未使用新标题 ${summary.unusedCount || 0} 个`),
+    el('p', '预览有效期 10 分钟。成功保存无法自动回滚；停止后会核对当前提交，随后结束。', 'hint'));
+  const create = button('确认修改商品标题', async () => {
+    const result = await call('title.create', {token:approved.token});
+    if (result.cancelled) return;
+    invalidateTitlePlan();
+    await navigate('tasks');
+    await taskDetail(result.taskId);
+  }, 'primary');
+  create.disabled = !summary.changeCount;
+  plan.append(create);
+  try {
+    const data = await call('title.plan_page', {token:approved.token, offset:state.titleOffset, limit:50});
+    if (state.view !== 'product-title' || state.titlePlan?.token !== approved.token) return;
+    plan.append(resultTable(data.items), pager(data.total, state.titleOffset, 50, offset => {state.titleOffset = offset; return titleWorkbench();}));
+  } catch (error) {
+    create.disabled = true;
+    plan.append(el('p', error.message, 'hint'));
+  }
 }
 async function toolForm() {
   const tool = state.tools.find((t) => t.toolId === state.view);
@@ -852,6 +975,12 @@ async function poll() {
               options.result = event.data.result;
           changed = state.options[state.view]?.operationId === event.data.operationId;
         }
+        if (event.data.kind === 'title_plan' && event.data.operationId === state.titleOperation) {
+          state.titleOperation = null;
+          state.titlePlan = event.data.result;
+          state.titleOffset = 0;
+          changed = state.view === 'product-title';
+        }
         if (["capture_page", "resolve_items"].includes(event.data.kind)) {
           const result = event.data.result || {};
           notice(event.data.kind === "resolve_items" ? `链接提取完成${result.failed ? `，${result.failed} 条未成功，请查看对应视频提示` : "，可复制链接"}。`
@@ -862,6 +991,16 @@ async function poll() {
         event.type === "operation.state" &&
         event.data.state === "failed"
       ) {
+        for (const options of Object.values(state.options)) {
+          if (options.operationId === event.data.operationId) {
+            options.error = event.data.error.message;
+            if (state.options[state.view] === options) changed = true;
+          }
+        }
+        if (event.data.operationId === state.titleOperation) {
+          state.titleOperation = null;
+          changed = state.view === 'product-title';
+        }
         if (state.captureOperations.delete(event.data.operationId) && state.view === "manual-video") changed = true;
         notice(event.data.error.message, true);
       }

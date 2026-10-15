@@ -564,6 +564,11 @@ pre {
   .capture-heading { flex-wrap: wrap; gap: 5px; }
 }
 .choices { display:grid; gap:10px; }
+.title-shops { display:flex; flex-wrap:wrap; gap:12px 24px; margin:18px 0; }
+.title-shops label { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.title-shops input { width:18px; height:18px; accent-color:var(--accent); }
+.title-loading { display:flex; align-items:center; gap:14px; padding:22px 0; }
+.title-status { margin-bottom:18px; }
 .choice-list { max-height:230px; overflow:auto; border:1px solid var(--line); border-radius:7px; padding:8px 12px; }
 .choice-list label { padding:6px 0; cursor:pointer; }
 .choice-list [hidden] { display:none; }

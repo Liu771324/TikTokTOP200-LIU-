@@ -19,6 +19,21 @@ test('cancelled operation cannot enter registration wait', async () => {
   assert.equal(pending.size, 0);
 });
 
+test('only active title runs can register text or Excel reports after cancellation', async () => {
+  const pending = new Map(), sent = [];
+  const api = createApi({toolId:'product-title'}, (kind, candidate) => sent.push([kind,candidate]), pending);
+  api.control.cancelled = true;
+  const result = api.registerReport({candidateId:'report',kind:'excel'});
+  assert.equal(sent[0][0], 'artifact_candidate');
+  pending.get('report').resolve({registered:true}); pending.delete('report');
+  assert.deepEqual(await result, {registered:true});
+  await assert.rejects(api.registerReport({candidateId:'video',kind:'video'}), {code:'UNSUPPORTED_OPERATION'});
+  api.close();
+  await assert.rejects(api.registerReport({candidateId:'closed',kind:'text'}), {code:'UNSUPPORTED_OPERATION'});
+  const other = createApi({toolId:'top200'}, () => assert.fail(), new Map());
+  await assert.rejects(other.registerReport({kind:'text'}), {code:'UNSUPPORTED_OPERATION'});
+});
+
 test('closed API rejects late events and candidates', async () => {
   const api = createApi({}, () => assert.fail('must not send'), new Map());
   api.close();

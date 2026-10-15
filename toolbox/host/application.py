@@ -18,6 +18,7 @@ from .store import Store
 from .location import DataLocation
 from .errors import ToolboxError
 from .state import ACTIVE
+from .titles import Titles
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,6 +60,8 @@ class Application:
         self.operations = Operations(self.store, self.events, self.logs, self.browser,
             node=node, entrypoint=ROOT / 'toolbox/node/worker.cjs', descriptors=self.descriptors,
             on_capture=self.capture.ingest, test_adapter=test_adapter)
+        self.titles = Titles(self)
+        self.operations.on_title_plan = self.titles.receive_plan
 
     def choose_data_location(self):
         import webview

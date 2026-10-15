@@ -11,12 +11,13 @@ INSTALL_MUTEX = r'Local\ScriptAllToolbox.InstallGuard'
 RUNTIMES = {'python': '3.13.2', 'node': '24.19.0', 'ffmpeg': '7.1', 'pyinstaller': '6.22.2'}
 CORE = 'toolbox/engines/downloader/douyin_downloader_core.py'
 BUSINESS_FILES = {
+    'toolbox/engines/product-title': ('browser.cjs', 'workbook.cjs', 'task.cjs', 'report.cjs'),
     'toolbox/engines/top200': ('collector.js', 'edge.js', 'task-store.js', 'collector-utils.js', 'export-excel.js'),
     'toolbox/engines/video': ('collector.js', 'edge.js', 'video-fingerprint.js', 'task-store.js',
         'compass-page.js', 'toolbox-runtime.js'),
 }
 NODE_FILES = ('worker.cjs', 'sdk.cjs', 'browser-client.cjs', 'douyin-page.cjs',
-    'adapters/top200.cjs', 'adapters/video-ranking.cjs', 'adapters/manual-video.cjs')
+    'adapters/top200.cjs', 'adapters/video-ranking.cjs', 'adapters/manual-video.cjs', 'adapters/product-title.cjs')
 WEB_FILES = ('index.html', 'app.js', 'style.css')
 PYTHON_FILES = ('toolbox/python_worker.py', 'toolbox/engines/__init__.py',
     'toolbox/engines/business/__init__.py', 'toolbox/engines/business/adapter.py',
@@ -126,7 +127,7 @@ def validate_bundle(directory):
         expected_files = {name for name in FROZEN_DATA_FILES if name.startswith(folder + '/')}
         if actual != expected_files:
             raise ValueError(f'Business release whitelist mismatch: {folder}')
-    if not (internal / 'node_modules/playwright-core/package.json').is_file() or not (internal / 'node_modules/exceljs/package.json').is_file():
+    if any(not (internal / f'node_modules/{name}/package.json').is_file() for name in ('playwright-core', 'exceljs', 'xlsx')):
         raise ValueError('Shared production npm installation is missing')
     for item in internal.rglob('node_modules'):
         relative = item.relative_to(internal).as_posix()

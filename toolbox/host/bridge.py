@@ -2,6 +2,9 @@ from .errors import ToolboxError
 from .files import clipboard
 
 FIELDS = {
+    'title.choose_input': set(), 'title.preview': {'inputId', 'shops', 'productStatus'},
+    'title.plan_page': {'token', 'offset', 'limit'}, 'title.create': {'token'},
+    'title.cancel_preview': {'operationId'},
     'app.get_state': set(), 'app.show': set(), 'app.request_exit': set(), 'events.read': {'afterSeq', 'limit'},
     'browser.get_state': set(), 'browser.open': {'source'}, 'browser.list_pages': set(), 'browser.clear_login': {'confirmed'},
     'tools.discover': {'toolId'}, 'tasks.create': {'toolId', 'parameters', 'itemIds'},
@@ -69,7 +72,19 @@ class Bridge:
             return a.browser.clear_login()
         if action == 'tools.discover':
             return a.operations.submit('discover', p['toolId'], {})
+        if action == 'title.choose_input':
+            return a.titles.choose_input()
+        if action == 'title.preview':
+            return a.titles.preview(p['inputId'], p['shops'], p['productStatus'])
+        if action == 'title.plan_page':
+            return a.titles.plan_page(p['token'], offset, limit)
+        if action == 'title.create':
+            return a.titles.create(p['token'])
+        if action == 'title.cancel_preview':
+            return a.operations.cancel_title_preview(p['operationId'])
         if action == 'tasks.create':
+            if p['toolId'] == 'product-title':
+                raise ToolboxError('UNSUPPORTED_OPERATION', '请先预览商品修改，再确认创建标题任务。')
             parameters = p.get('parameters', {})
             if p['toolId'] == 'manual-video':
                 parameters = {'items': a.capture.selected(p['itemIds'])}

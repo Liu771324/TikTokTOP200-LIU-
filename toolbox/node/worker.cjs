@@ -3,6 +3,7 @@ const path = require('node:path');
 const { createApi } = require('./sdk.cjs');
 const MAX_BYTES = 1024 * 1024;
 const adapterPaths = {
+  'product-title': './adapters/product-title.cjs',
   top200: './adapters/top200.cjs',
   'video-ranking': './adapters/video-ranking.cjs',
   'manual-video': './adapters/manual-video.cjs',
@@ -25,9 +26,12 @@ function errorData(error) {
     message: String(error?.message || error || '工作者执行失败。').slice(0, 4000), retryable: false };
 }
 
-function rejectPending(error) {
-  for (const pending of pendingArtifacts.values()) pending.reject(error);
-  pendingArtifacts.clear();
+function rejectPending(error, preserveFinalReports = false) {
+  for (const [id, pending] of pendingArtifacts) {
+    if (preserveFinalReports && pending.finalTitleReport) continue;
+    pending.reject(error);
+    pendingArtifacts.delete(id);
+  }
 }
 
 function stop() {
@@ -49,7 +53,7 @@ function handle(message) {
     }
     if (message.type === 'cancel') {
       active.api.control.cancelled = true;
-      rejectPending(Object.assign(new Error('操作已停止。'), { code: 'CANCELLED' }));
+      rejectPending(Object.assign(new Error('操作已停止。'), { code: 'CANCELLED' }), true);
     } else {
       active.api.control.pauseRequested = message.type === 'pause';
       if (message.type === 'resume') active.api.control.waitingUser = false;
@@ -68,7 +72,7 @@ function handle(message) {
   }
   if (message.type === 'shutdown') { reply('ack', { command: 'shutdown' }); stop(); return; }
   if (closing || active) { reply('error', { code: 'BROWSER_BUSY', message: '工作者正在执行其他操作。', retryable: true }); return; }
-  if (!['run', 'discover', 'capture_page', 'resolve_items', 'download_item', 'read_results'].includes(message.type)) {
+  if (!['run', 'discover', 'capture_page', 'resolve_items', 'download_item', 'read_results', 'title_input', 'title_plan'].includes(message.type)) {
     reply('error', { code: 'UNSUPPORTED_OPERATION', message: '不支持该命令。', retryable: false }); return;
   }
   const context = message.context;

@@ -63,6 +63,20 @@ function createApi(context, send, pendingArtifacts, command = 'run') {
         catch (error) { pendingArtifacts.delete(candidate.candidateId); reject(error); }
       });
     },
+    async registerReport(candidate) {
+      // Title writes finish verifying the current submission after stop; their
+      // reports may still be registered, without reopening ordinary work.
+      if (closed || command !== 'run' || context.toolId !== 'product-title'
+          || !['excel', 'text'].includes(candidate?.kind)) {
+        throw Object.assign(new Error('此操作不允许登记收尾报告。'), { code: 'UNSUPPORTED_OPERATION' });
+      }
+      if (pendingArtifacts.has(candidate.candidateId)) throw new Error('报告正在登记。');
+      return new Promise((resolve, reject) => {
+        pendingArtifacts.set(candidate.candidateId, { resolve, reject, finalTitleReport: true });
+        try { send('artifact_candidate', candidate); }
+        catch (error) { pendingArtifacts.delete(candidate.candidateId); reject(error); }
+      });
+    },
     async lookup(candidateId) {
       assertOpen();
       if (!context.taskId) throw new Error('此操作没有任务身份。');

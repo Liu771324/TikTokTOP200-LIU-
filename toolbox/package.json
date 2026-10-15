@@ -4,7 +4,8 @@
   "private": true,
   "dependencies": {
     "exceljs": "4.4.0",
-    "playwright-core": "1.58.2"
+    "playwright-core": "1.58.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "overrides": {"uuid": "11.1.1"},
   "engines": {"node": "24.19.0"}

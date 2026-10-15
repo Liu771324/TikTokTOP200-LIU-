@@ -42,7 +42,7 @@ def bundle_fixture(root):
             'toolbox/runtime/licenses/node/LICENSE', 'toolbox/runtime/licenses/ffmpeg/COPYING.GPLv3',
             'toolbox/runtime/licenses/python/LICENSE.txt', 'toolbox/runtime/licenses/proxy_tools/LICENSE.txt',
             'toolbox/release-info.json', 'node_modules/playwright-core/package.json',
-            'node_modules/exceljs/package.json', 'playwright/driver/package/cli.js'):
+            'node_modules/exceljs/package.json', 'node_modules/xlsx/package.json', 'playwright/driver/package/cli.js'):
         write(internal, name)
     write(root, layout.APP_NAME + '.exe')
     return internal
@@ -58,7 +58,7 @@ class SourceLayoutTests(unittest.TestCase):
         self.assertIn('toolbox/python_worker.py', layout.SOURCE_FILES)
         for folder, names in layout.BUSINESS_FILES.items():
             for name in names:
-                self.assertEqual(Path(name).suffix, '.js')
+                self.assertIn(Path(name).suffix, {'.js', '.cjs'})
                 self.assertNotIn(name, ('server.js', 'app.js'))
                 self.assertEqual(Path(name).name, name)
                 self.assertIn(folder + '/' + name, layout.SOURCE_FILES)
@@ -247,7 +247,8 @@ class BuildContractTests(unittest.TestCase):
             'pywin32-ctypes': '0.2.3', 'setuptools': '84.0.0'})
         package = json.loads((ROOT / 'toolbox/package.json').read_text(encoding='utf-8'))
         self.assertEqual(package['engines']['node'], layout.RUNTIMES['node'])
-        self.assertEqual(package['dependencies'], {'exceljs': '4.4.0', 'playwright-core': '1.58.2'})
+        self.assertEqual(package['dependencies'], {'exceljs': '4.4.0', 'playwright-core': '1.58.2',
+            'xlsx': 'https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz'})
 
     def test_lock_bom_does_not_change_package_name(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -11,6 +11,7 @@
 | Python Playwright | 1.58.0 | https://github.com/microsoft/playwright-python；随driver/package保留声明 |
 | Node Playwright Core | 1.58.2 | https://github.com/microsoft/playwright；node_modules/playwright-core/LICENSE |
 | ExcelJS | 4.4.0 | https://github.com/exceljs/exceljs；node_modules/exceljs/LICENSE |
+| SheetJS Community Edition | 0.20.3 | https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz；node_modules/xlsx/LICENSE（Apache-2.0） |
 | pywebview、pystray、Pillow、requests、openpyxl等 | 见requirements.lock.txt | 各Python包的dist-info/许可目录 |
 
 Node依赖的传递组件保留在同一node_modules及其许可文件中。Python Playwright的协议脚本与Node端Playwright Core分别保留自己的版本；两者共享同一个Node可执行文件，不共享不同版本的协议脚本。

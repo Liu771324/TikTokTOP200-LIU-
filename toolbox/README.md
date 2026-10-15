@@ -1,6 +1,6 @@
 # 电商工具箱
 
-这里是桌面工具箱实现目录，包含桌面、托盘、统一任务/浏览器调度、结果存储和四个业务入口。当前交付0.1.5本机验收版，商机中心统一使用Python API引擎，已接入业务模块集中于`engines`；清理、控制及恢复的实证见[重组记录](../docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)。人工工作台双来源流程见[实施记录](../docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。
+这里是桌面工具箱实现目录，包含桌面、托盘、统一任务/浏览器调度、结果存储和五个业务入口。本轮0.1.6加入商品标题，状态与证据见[接入记录](../docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)。商机中心统一使用Python API引擎，已接入业务模块集中于`engines`；清理、控制及恢复见[重组记录](../docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)，人工工作台见[实施记录](../docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。成本助手本轮仅评估，未进入工具列表。
 
 普通用户见[使用说明](用户使用说明.md)；构建与安装验收见[Windows 构建说明](windows/README.md)。
 
@@ -10,7 +10,7 @@
 
 开发桌面验收 `toolbox/.venv/Scripts/python.exe -m toolbox.desktop --smoke` 使用独占临时目录、测试 worker，验证主界面桥接、窗口隐藏恢复、托盘、单实例及任务后自动退出。不会登录或采集真实平台。真实 Edge 空白会话可单独运行 `python -m toolbox.tests.smoke_browser`。
 
-源码真实验收使用 `toolbox/.venv/Scripts/python.exe -m toolbox.desktop --acceptance`，开放四工具并使用当前用户的正式任务、结果与专用浏览器资料；仅供开发者验收，冻结发布程序拒绝此参数。
+源码真实验收使用 `toolbox/.venv/Scripts/python.exe -m toolbox.desktop --acceptance`，开放工具并使用当前用户的正式任务、结果与专用浏览器资料；仅供开发者验收，冻结发布程序拒绝此参数。标题真实保存仍须先预览，再由用户确认；不能把此参数当作业务修改授权。
 
 ## 开发验证
 
@@ -31,6 +31,7 @@ node --test toolbox/tests/sdk.test.cjs
 - `python_worker.py`：隐藏Python后台进程，与Node使用同一NDJSON协议、任务身份及心跳约束。
 - `engines/top200`、`engines/video`：迁入后的Node业务模块；`engines/downloader`为Python下载核心与许可。
 - `engines/shared/edge.js`：未接入的搜索词工具仍使用的源码共用模块，不进入当前安装包。
+- `engines/product-title`：表格、冻结商品计划、受管小猪页面保存及失败报告；`host/titles.py`管理原生选表和一次性确认。标题任务禁止重启重放，不提供继续/重试。
 
 - `host/paths.py`：显式创建数据目录和 RunContext，导入不写文件。
 - `host/store.py`：SQLite schema 1，任务摘要、候选幂等、精确共享与删除事务。文件操作不能嵌套于未提交事务；最终文件登记前保留 staging 原件及小型登记意图，重启协调后可重试。

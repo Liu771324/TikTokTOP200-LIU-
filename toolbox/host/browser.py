@@ -15,6 +15,8 @@ from .processes import start_process
 from .resources import ResourceQueue
 
 SOURCES = {
+    'product-title': 'https://fxg.jinritemai.com/ffa/mshop/homepage/index',
+    'title-platform': 'https://xiaozhu.huanhou.cn/c/combainSearch/index',
     'business-center': 'https://fxg.jinritemai.com/ffa/bu/NewBusinessCenter',
     'top200': 'https://compass.jinritemai.com/shop/chance/merchandise-product-rank',
     'video-ranking': 'https://compass.jinritemai.com/shop/chance/merchandise-product-rank',

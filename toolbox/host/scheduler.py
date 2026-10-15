@@ -10,6 +10,7 @@ from .state import ACTIVE
 from .worker import NodeWorker, PythonWorker
 
 PARAMETERS = {
+    'product-title': {'planId', 'planSha256'},
     'business-center': {'categories', 'minSales', 'maxSales', 'only30dGrowth'},
     'top200': {'categories', 'rankingTypes', 'brandType'},
     'video-ranking': {'category', 'brandType', 'period', 'trendMode'},
@@ -39,7 +40,10 @@ class TaskScheduler:
             if offset >= batch['total']:
                 break
         for task in reversed(queued):
-            if self.descriptors.get(task['toolId'], {}).get('available'):
+            if task['toolId'] == 'product-title':
+                self._state(task['id'], 'failed', task['attempt'], error={'code': 'CONFIRMATION_REQUIRED',
+                    'message': '标题修改任务在重启后不会自动执行，请重新预览并确认。'})
+            elif self.descriptors.get(task['toolId'], {}).get('available'):
                 self._schedule(task)
             else:
                 self._state(task['id'], 'failed', task['attempt'], error={'code': 'UNSUPPORTED_OPERATION', 'message': '当前版本尚未接入此工具，请使用支持的版本继续。'})
@@ -225,7 +229,7 @@ class TaskScheduler:
                     self._state(task_id, 'cancelled', task['attempt'])
                 elif state != 'stopping':
                     self._state(task_id, 'stopping', task['attempt'])
-                handle['deadline'] = time.monotonic() + 10
+                handle['deadline'] = time.monotonic() + (75 if task['toolId'] == 'product-title' else 10)
                 if handle['worker']:
                     try:
                         handle['worker'].send('cancel', task_id=task_id, attempt=task['attempt'])
@@ -265,7 +269,8 @@ class TaskScheduler:
             handles = list(self._runs.items())
         for task_id, _ in handles:
             self.control(task_id, 'cancel')
-        deadline = time.monotonic() + 20
+        title_active = any(self.store.task(task_id)['toolId'] == 'product-title' for task_id, _ in handles)
+        deadline = time.monotonic() + (80 if title_active else 20)
         for _, handle in handles:
             handle['thread'].join(max(0, deadline - time.monotonic()))
         remaining = [handle for _, handle in handles if handle['thread'].is_alive()]

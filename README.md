@@ -1,8 +1,8 @@
 # Script All 电商工具库
 
-这个总仓收录面向抖音电商工作的本地脚本和小工具。统一桌面工具箱已整合商机中心、TOP200、自动短视频采集和人工视频工作台；已接入的业务源码集中在 `toolbox/engines`。
+这个总仓收录面向抖音电商工作的本地脚本和小工具。统一桌面工具箱已整合商机中心、TOP200、自动短视频采集、人工视频工作台和商品标题工作台；已接入的业务源码集中在 `toolbox/engines`。
 
-**当前版本：0.1.5 本机验收版。** 商机中心统一采用 Python API 引擎，提供数据检查、检查点、暂停、继续、停止和失败重试；视频下载核心及已接入模块迁入工具箱，旧独立代码和重复依赖已清理，见[重组与验收记录](docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)。人工视频工作台支持罗盘/抖音读取，见[实施记录](docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。普通用户操作见[工具箱使用说明](toolbox/用户使用说明.md)，开发与构建入口见 [toolbox 说明](toolbox/README.md)。搜索词、商品标题和成本助手仍以独立项目形式保留。
+**本轮版本：0.1.6 商品标题接入版，交付状态以[实施记录](docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)为准。** 标题工作台提供系统选表、具体商品新旧标题预览、确认修改、停止核对与报告，不自动继续或重放写入。商机中心使用 Python API，详见[重组记录](docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)；人工视频工作台支持罗盘/抖音读取，见[记录](docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。普通用户见[工具箱使用说明](toolbox/用户使用说明.md)，开发见 [toolbox 说明](toolbox/README.md)。搜索词尚未接入；成本助手先做[稳定性评估](docs/TOOLBOX_COST_INTEGRATION_ASSESSMENT.md)，暂不接入。原独立商品标题工作台继续保留。
 
 本机现已统一为`D:\前端\ai\电商工具箱\程序`和`D:\前端\ai\电商工具箱\数据`，清理验收视频及临时产物后总目录约805MB。源码仓库单独保留；空间明细、迁移核验和后续小于5GB的程序容量目标见[统一目录与容量记录](docs/TOOLBOX_UNIFIED_DIRECTORY.md)。
 

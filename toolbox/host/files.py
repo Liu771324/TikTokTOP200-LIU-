@@ -337,8 +337,12 @@ class Files:
             active = set()
             with self.store._lock:
                 active = {r[0] for r in self.store._db.execute('SELECT id FROM tasks WHERE state IN (%s)' % ','.join('?' * len(ACTIVE)), tuple(ACTIVE))}
+                title_plans = {'title-plan-' + json.loads(row[0]).get('planId', '') for row in self.store._db.execute(
+                    'SELECT parameters_json FROM tasks WHERE tool_id=? AND state IN (%s)' % ','.join('?' * len(ACTIVE)),
+                    ('product-title', *ACTIVE))}
             for directory in self.store.paths.resolve('scratch').iterdir():
-                if directory.name in active or (directory.name.startswith('operation-') and operations_active):
+                if (directory.name in active or directory.name in title_plans
+                        or (operations_active and directory.name.startswith(('operation-', 'title-import-', 'title-plan-')))):
                     continue
                 self.store.paths.relative(directory)
                 if not directory.is_dir():
