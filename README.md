@@ -2,7 +2,7 @@
 
 这个总仓收录面向抖音电商工作的本地脚本和小工具。统一桌面工具箱已整合商机中心、TOP200、自动短视频采集、人工视频工作台和商品标题工作台；已接入的业务源码集中在 `toolbox/engines`。
 
-**本轮版本：0.1.7 商品标题界面修复版，交付状态以[实施记录](docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)为准。** 店铺列表按等宽列对齐、支持长名换行与滚动，预览按钮保留独立间距。标题工作台提供系统选表、具体商品新旧标题预览、确认修改、停止核对与报告，不自动继续或重放写入。商机中心使用 Python API，详见[重组记录](docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)；人工视频工作台支持罗盘/抖音读取，见[记录](docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。普通用户见[工具箱使用说明](toolbox/用户使用说明.md)，开发见 [toolbox 说明](toolbox/README.md)。搜索词尚未接入；成本助手先做[稳定性评估](docs/TOOLBOX_COST_INTEGRATION_ASSESSMENT.md)，暂不接入。原独立商品标题工作台继续保留。
+**本轮版本：0.1.7 商品标题界面修复版，交付状态以[实施记录](docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)为准。** 店铺列表按等宽列对齐、支持长名换行与滚动，预览按钮保留独立间距。标题工作台提供系统选表、具体商品新旧标题预览、确认修改、停止核对与报告，不自动继续或重放写入。商机中心使用 Python API，详见[重组记录](docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)；人工视频工作台支持罗盘/抖音读取，见[记录](docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。普通用户见[工具箱使用说明](toolbox/用户使用说明.md)，开发见 [toolbox 说明](toolbox/README.md)。搜索词尚未接入；成本助手先做[稳定性评估](docs/TOOLBOX_COST_INTEGRATION_ASSESSMENT.md)，暂不接入。原独立商品标题工具已按用户授权清理。
 
 本机统一为`D:\前端\ai\电商工具箱\程序`和`D:\前端\ai\电商工具箱\数据`；0.1.6安装时总目录约592MiB，程序文件较0.1.5仅增加约7.8MiB，数据量随使用变化，见[当前交付记录](docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)。源码仓库单独保留；此前迁移和后续小于5GB的程序容量目标见[统一目录与容量记录](docs/TOOLBOX_UNIFIED_DIRECTORY.md)。
 
@@ -24,10 +24,10 @@
 | 榜单与视频 | 商品 TOP200 | 罗盘商品榜单采集，已接入工具箱 | [工具箱使用说明](toolbox/用户使用说明.md) |
 | 榜单与视频 | 自动短视频 | 视频和文案整理，已接入工具箱 | [工具箱使用说明](toolbox/用户使用说明.md) |
 | 榜单与视频 | 人工视频工作台 | 双来源选取、提取链接及下载 | [工具箱使用说明](toolbox/用户使用说明.md) |
-| 商品与成本 | 商品标题工作台 | 已接入：预览具体商品并确认批量改标题 | [工具箱说明](toolbox/用户使用说明.md) · [独立版](<Product Title/使用说明.md>) |
+| 商品与成本 | 商品标题工作台 | 已接入：预览具体商品并确认批量改标题 | [工具箱说明](toolbox/用户使用说明.md) |
 | 商品与成本 | 成本助手 | 聚水潭成本价同步和抖店只读成本辅助 | [工具说明](<Cost Accounting(成本价）/README.md>) |
 
-已接入工具核心统一存放于 `toolbox/engines/{business,top200,video,downloader,product-title}`；前四工具旧独立入口已清理，原独立商品标题工作台继续保留。历史业务文件经校验归档在本机 `local-archive/legacy-tools`，该目录不进入Git或安装包。净含量独立项目已由用户移出，未作为工具箱功能接入。Git分支表示开发工作，`toolbox-v0.1.5`保留标题接入前的回溯点。
+已接入工具核心统一存放于 `toolbox/engines/{business,top200,video,downloader,product-title}`；旧独立入口已清理。历史业务文件经校验归档在本机 `local-archive/legacy-tools`，标题表格、历史报告及旧备份在其中的 `product-title` 子目录，该目录不进入Git或安装包。净含量独立项目已由用户移出，未作为工具箱功能接入。Git分支表示开发工作，`toolbox-v0.1.7`保留删除旧标题目录前的源码回溯点。
 
 ## 使用方式
 
