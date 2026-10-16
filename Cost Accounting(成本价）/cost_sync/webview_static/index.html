@@ -103,11 +103,59 @@
       </section>
 
       <section id="page-catalog" class="page" data-title="今日成本更新" hidden>
+        <article class="card cost-import-card">
+          <p class="section-kicker">一个生效成本目录 · 多种表格来源</p>
+          <h2>1. 读取成本表</h2>
+          <p>支持 XLSX、CSV、TSV，一行一个销售 SKU 的基础商品成本。先看原表，再对应字段；旧 XLS 请另存为 XLSX。</p>
+          <div class="button-row"><button id="cost-choose" class="button primary" type="button" disabled>选择成本表</button><strong id="cost-file-name">尚未选择</strong></div>
+          <div class="cost-import-grid">
+            <label>工作表<select id="cost-sheet" disabled></select></label>
+            <label>表头所在行<input id="cost-header" type="number" min="1" max="50" value="1"></label>
+            <label>文本编码<select id="cost-encoding"><option value="utf-8-sig">UTF-8（含 BOM）</option><option value="gb18030">GB18030（中文旧格式）</option></select></label>
+            <label>文本分隔符<select id="cost-delimiter"><option value="">按 CSV / TSV 扩展名</option><option value=",">逗号</option><option value="tab">制表符</option><option value=";">分号</option></select></label>
+          </div>
+          <div class="button-row"><button id="cost-read" class="button secondary" type="button" disabled>按所选位置重新读取</button></div>
+          <p>原表预览最多读取前 50 行；最终预览会校验所选范围全部内容。多个工作表或价格列需要你明确选择。</p>
+          <div id="cost-source-preview" class="cost-table-scroll" hidden></div>
+        </article>
+        <form id="cost-form" class="card cost-import-card" hidden>
+          <h2>2. 对应字段和更新范围</h2>
+          <label>已有格式模板<select id="cost-profile"><option value="">手动对应 / 自动候选</option></select></label>
+          <div class="cost-import-grid">
+            <label>商品编码列（必选）<select id="cost-map-sku" required></select></label>
+            <label>基础成本列（必选）<select id="cost-map-cost" required></select></label>
+            <label>商品名称列（可选）<select id="cost-map-name"></select></label>
+            <label>商品状态列（可选）<select id="cost-map-status"></select></label>
+            <label>当前成本目录名称<input id="cost-scope" value="当前成本目录" maxlength="80" required></label>
+            <label>本次来源 / 供应商<input id="cost-source-label" maxlength="80" required placeholder="例如：供应商 A 的商品成本表"></label>
+            <label>更新方式<select id="cost-mode"><option value="merge">增量更新：未出现的商品保留</option><option value="replace">全量替换：移除未出现的商品</option></select></label>
+            <label>金额数字格式<select id="cost-number-format"><option value="plain">1234.56（小数点，无千位符）</option><option value="grouped">1,234.56（逗号千位符）</option><option value="decimal_comma">1.234,56（逗号小数）</option></select></label>
+            <label>读取结束行（可选）<input id="cost-last-row" type="number" min="2" placeholder="留空读到末尾；用于排除底部汇总"></label>
+            <label>本次成功后保存格式模板（可选）<input id="cost-profile-name" maxlength="80" placeholder="例如：供应商 A 格式"></label>
+          </div>
+          <p>未选名称或状态列时，已有商品保留原值，新商品默认启用。状态支持启用/禁用/停用及 1/0/-1。空成本保留为空，更新为缺失后不能生成完整成本。</p>
+          <div class="cost-confirmations">
+            <label><input id="cost-same-catalog" type="checkbox" required><span>确认来源与当前目录使用同一套 SKU 身份，相同编码代表同一商品。</span></label>
+            <label><input id="cost-basis" type="checkbox" required><span>确认金额是人民币、单个销售 SKU 的基础商品成本，不含另行计算的运费和平台费。</span></label>
+            <label><input id="cost-formulas" type="checkbox"><span>接受已缓存的公式结果（不会执行公式；编码不接受公式）。</span></label>
+            <label id="cost-full-row" hidden><input id="cost-full" type="checkbox"><span>确认所选文件和行范围是整个成本目录，允许移除未出现的商品。</span></label>
+          </div>
+          <div class="button-row"><button id="cost-preview" class="button primary" type="submit" disabled>3. 预览具体变化</button></div>
+        </form>
+        <article id="cost-preview-card" class="card cost-import-card" hidden>
+          <h2>3. 核对后确认更新</h2>
+          <pre id="cost-preview-detail" class="cost-import-detail"></pre>
+          <p>本次使用预览时留存的文件快照。源文件修改后请重新选择；确认前会复核当前成本库版本。</p>
+          <button id="cost-apply" class="button primary" type="button" disabled>确认更新生效成本目录</button>
+        </article>
+        <div id="cost-result" class="result-box" role="status" aria-live="polite" hidden></div>
+        <details class="card cost-import-card">
+          <summary>聚水潭普通商品＋组合商品配对预设（完整快照）</summary>
         <div class="page-intro">
           <div>
             <p class="section-kicker">普通 / 组合双表</p>
             <h2>两份表，作为一个批次更新</h2>
-            <p>必须来自同一次导出。预览只读；确认时复核文件、先备份，再以一个事务原子发布。</p>
+            <p>两份表必须来自同一次完整导出。支持唯一识别的工作表、前 50 行内表头及列重排。工作簿日期只能辅助核对，不能证明同批次；确认前仍需人工核对。预览只读，确认先备份再受保护发布。</p>
           </div>
           <span class="rule-badge">缺一份即拦截</span>
         </div>
@@ -150,6 +198,7 @@
           <div class="confirm-row"><p>确认后会先创建可恢复备份；任一步失败都继续使用上一份完整数据。</p><button id="apply-catalog" class="button primary" type="button" disabled>确认原子更新</button></div>
         </section>
         <div id="catalog-result" class="result-box" role="status" aria-live="polite" hidden></div>
+        </details>
       </section>
 
       <section id="page-mapping" class="page" data-title="抖店商品对应关系" hidden>
@@ -269,6 +318,7 @@
               <select id="service-fee-major-filter" aria-label="按经营大类筛选"><option value="">全部经营大类</option></select>
               <input id="service-fee-search" type="search" placeholder="搜索任一级类目" aria-label="搜索类目">
               <select id="service-fee-rate-filter" aria-label="按基础费率筛选"><option value="">全部费率</option></select>
+              <select id="service-fee-version-filter" aria-label="按版本日期筛选"><option value="current">各规则当前版本</option><option value="all">全部日期版本</option><option value="historical">历史版本</option><option value="future">未来生效版本</option></select>
             </div>
             <div id="service-fee-list" class="service-fee-list" aria-live="polite"></div>
             <p id="service-fee-empty" class="service-fee-empty">还没有费率版本。先填写右侧表单。</p>
@@ -341,15 +391,15 @@
               <div class="shipping-track-arrow" aria-hidden="true"><span>超出后</span><b>→</b></div>
               <label class="shipping-step additional"><span>02 · 每续重</span><strong><input id="shipping-additional-weight" inputmode="decimal" value="1" required> kg</strong><small>续费 <input id="shipping-additional-fee" inputmode="decimal" value="1" required> 元</small></label>
             </div>
-            <p class="shipping-formula">计算：首费 + ⌈（商品重量 − 首重）÷ 续重⌉ × 续费</p>
+            <p class="shipping-formula">首重内收首费；超出部分每开始一档续重就加一档续费。规格净含量仅供估算，实际包装重量未计入。</p>
             <div class="shipping-cost-preview" aria-label="重量费用预览">
               <label><span>试算重量 / kg</span><input id="shipping-preview-weight" inputmode="decimal" value="1.1"></label>
               <label><span>试算地区</span><input id="shipping-preview-region" placeholder="留空使用基础规则"></label>
-              <output id="shipping-preview-cost">预计内部运费 4 元</output>
+              <output id="shipping-preview-cost">填写规则后试算；重量留空按模板首重估算。</output>
             </div>
 
             <div class="shipping-rules-head">
-              <div><h4>特殊地区价格</h4><p>未列地区使用基础规则；特殊地区价格独立计算，不与基础价格叠加。</p></div>
+              <div><h4>特殊地区价格</h4><p>地区名称按原文精确匹配，省市名称不会自动转换。未列地区使用基础规则；特殊价格独立替换。当前扩展未指定目的地区，使用基础规则估算。</p></div>
               <button id="add-shipping-rule" class="button secondary" type="button">添加地区</button>
             </div>
             <div id="shipping-rule-list" class="shipping-rule-list"></div>
@@ -369,11 +419,18 @@
           </div>
           <div class="shipping-binding-controls">
             <label><span>店铺</span><select id="shipping-binding-shop" required></select></label>
-            <label><span>绑定状态</span><select id="shipping-binding-status"><option value="unbound">仅未绑定</option><option value="all">全部商品</option><option value="bound">已绑定</option></select></label>
+            <label><span>绑定状态</span><select id="shipping-binding-status"><option value="unbound">仅未绑定</option><option value="all">全部商品</option><option value="bound">已绑定</option><option value="unavailable">已绑定但模板不可用</option></select></label>
             <label><span>商品搜索</span><input id="shipping-binding-search" type="search" placeholder="商品名称或商品 ID"></label>
             <label><span>运费模板</span><select id="shipping-binding-template" required></select></label>
           </div>
           <div id="shipping-product-list" class="shipping-product-list" aria-live="polite"></div>
+          <div class="button-row shipping-pagination">
+            <button id="shipping-select-page" class="button secondary" type="button">选择本页</button>
+            <button id="shipping-clear-page" class="button secondary" type="button">清空本页</button>
+            <button id="shipping-page-prev" class="button secondary" type="button">上一页</button>
+            <span id="shipping-page-info" role="status">每页最多 100 个商品，翻页或筛选会清空勾选。</span>
+            <button id="shipping-page-next" class="button secondary" type="button">下一页</button>
+          </div>
           <div class="shipping-actions">
             <p id="shipping-binding-progress" role="status" aria-live="polite">选择店铺、模板和商品后先预览。</p>
             <button class="button primary" type="submit">预览并绑定</button>

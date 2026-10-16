@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import nullcontext
 
 import re
 from collections.abc import Iterable, Mapping
@@ -7,7 +8,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from pathlib import Path
 
-from .database import connect_database
+from .database import connect_database, read_database
 from .locks import management_locked
 from .update_rollback import backup_database, record_system_update
 
@@ -20,6 +21,7 @@ class ShippingFeeEstimate:
     rule_type: str | None
     unconfigured_reason: str | None
     estimated_from_first_weight: bool = False
+    additional_steps: int = 0
 
 
 @dataclass(frozen=True)
@@ -197,8 +199,9 @@ def calculate_shipping_fee(
     template_id: int,
     weight_kg: object,
     region: str = "",
+    _connection=None,
 ) -> ShippingFeeEstimate:
-    with connect_database(database_path) as connection:
+    with (nullcontext(_connection) if _connection is not None else read_database(database_path)) as connection:
         row = connection.execute(
             "SELECT * FROM shipping_templates WHERE id = ?", (template_id,)
         ).fetchone()
@@ -207,6 +210,17 @@ def calculate_shipping_fee(
             "SELECT * FROM shipping_region_rules WHERE template_id = ? AND region = ?",
             (template_id, selected_region),
         ).fetchone()
+    return _estimate_shipping_values(row, rule, template_id=template_id, weight_kg=weight_kg, region=region)
+
+
+def trial_shipping_fee(payload: Mapping[str, object], *, weight_kg: object, region: str = "") -> ShippingFeeEstimate:
+    normalized = normalize_shipping_template({**payload, "name": payload.get("name") or "草稿试算"})
+    selected = str(region).strip()
+    rule = next((rule for rule in normalized["region_rules"] if rule["region"] == selected), None)
+    return _estimate_shipping_values(normalized, rule, template_id=normalized["template_id"] or 0, weight_kg=weight_kg, region=selected)
+
+
+def _estimate_shipping_values(row, rule, *, template_id: int, weight_kg: object, region: str) -> ShippingFeeEstimate:
     if row is None:
         return ShippingFeeEstimate(
             template_id, None, None, None, "运费模板未配置"
@@ -216,20 +230,22 @@ def calculate_shipping_fee(
         return ShippingFeeEstimate(
             template_id, None, selected_region, None, "运费模板已停用"
         )
-    first_weight = Decimal(str(row["first_weight"]))
+    first_weight = Decimal(_positive_decimal(row["first_weight"], "首重"))
+    additional_weight = Decimal(_positive_decimal(row["additional_weight"], "续重"))
     estimated_from_first_weight = weight_kg is None or not str(weight_kg).strip()
     weight = (
         first_weight
         if estimated_from_first_weight
         else Decimal(_positive_decimal(weight_kg, "商品重量"))
     )
-    fee = Decimal(str(row["first_fee"] if rule is None else rule["first_fee"]))
+    fee = Decimal(_nonnegative_decimal(row["first_fee"] if rule is None else rule["first_fee"], "首费"))
+    additional_steps = Decimal("0")
     if weight > first_weight:
         additional_steps = (
-            (weight - first_weight) / Decimal(str(row["additional_weight"]))
+            (weight - first_weight) / additional_weight
         ).to_integral_value(rounding=ROUND_CEILING)
         additional_fee = row["additional_fee"] if rule is None else rule["additional_fee"]
-        fee += additional_steps * Decimal(str(additional_fee))
+        fee += additional_steps * Decimal(_nonnegative_decimal(additional_fee, "续费"))
     return ShippingFeeEstimate(
         template_id,
         _decimal_text(fee),
@@ -237,6 +253,7 @@ def calculate_shipping_fee(
         "default" if rule is None else "region",
         None,
         estimated_from_first_weight,
+        int(additional_steps),
     )
 
 
@@ -258,10 +275,12 @@ def save_shipping_product_binding(
     timestamp = _timestamp(changed_at)
     with connect_database(database_path) as connection:
         template = connection.execute(
-            "SELECT 1 FROM shipping_templates WHERE id = ?", (template_id,)
+            "SELECT enabled FROM shipping_templates WHERE id = ?", (template_id,)
         ).fetchone()
         if template is None:
             raise ValueError("运费模板不存在")
+        if not template["enabled"]:
+            raise ValueError("运费模板已停用，不能新增绑定")
         connection.execute(
             """
             INSERT INTO shipping_product_bindings (
@@ -282,9 +301,9 @@ def save_shipping_product_binding(
 
 
 def match_product_shipping_template(
-    database_path: str | Path, *, shop_name: str, douyin_product_id: str
+    database_path: str | Path, *, shop_name: str, douyin_product_id: str, _connection=None
 ) -> ProductShippingTemplateMatch:
-    with connect_database(database_path) as connection:
+    with (nullcontext(_connection) if _connection is not None else read_database(database_path)) as connection:
         row = connection.execute(
             """
             SELECT binding.template_id, binding.enabled AS binding_enabled,
@@ -319,6 +338,8 @@ def normalize_shipping_product_bindings(
     product_ids = tuple(dict.fromkeys(
         _required_text(value, "抖店商品ID") for value in raw_ids
     ))
+    if len(product_ids) > 500:
+        raise ValueError("每次最多绑定 500 个商品，请按页分批核对")
     return {
         "shop_name": _required_text(payload.get("shop_name"), "店铺名称"),
         "template_id": template_id,
@@ -338,17 +359,19 @@ def apply_shipping_product_bindings(
     database = Path(database_path).resolve()
     with connect_database(database) as connection:
         template = connection.execute(
-            "SELECT 1 FROM shipping_templates WHERE id = ?",
+            "SELECT enabled FROM shipping_templates WHERE id = ?",
             (normalized["template_id"],),
         ).fetchone()
         if template is None:
             raise ValueError("运费模板不存在")
+        if not template["enabled"]:
+            raise ValueError("运费模板已停用，不能新增绑定")
         known = {
             str(row[0])
             for row in connection.execute(
                 "SELECT DISTINCT douyin_product_id FROM douyin_sku_mappings "
-                "WHERE shop_name = ?",
-                (normalized["shop_name"],),
+                    f"WHERE shop_name = ? AND douyin_product_id IN ({','.join('?' for _ in normalized['douyin_product_ids'])})",
+                (normalized["shop_name"], *normalized["douyin_product_ids"]),
             )
         }
     missing = [value for value in normalized["douyin_product_ids"] if value not in known]
@@ -436,6 +459,91 @@ def list_shipping_product_bindings(
         "products": [dict(row) for row in products],
         "unbound_count": sum(row["template_id"] is None for row in products),
     }
+
+
+def read_shipping_binding_page(database_path: str | Path, *, shop_name: str = "", status: str = "unbound", query: str = "", page: int = 1) -> dict:
+    if status not in {"unbound", "bound", "all", "unavailable"}:
+        raise ValueError("商品绑定筛选状态无效")
+    if isinstance(page, bool) or not isinstance(page, int) or page < 1:
+        raise ValueError("商品页码无效")
+    if not isinstance(query, str) or len(query) > 120:
+        raise ValueError("搜索内容超过支持范围")
+    cte = """WITH grouped AS (
+        SELECT mapping.shop_name, mapping.douyin_product_id,
+               MIN(mapping.product_name) AS product_name, COUNT(*) AS sku_count,
+               binding.template_id, template.enabled AS template_enabled
+        FROM douyin_sku_mappings AS mapping
+        LEFT JOIN shipping_product_bindings AS binding
+          ON binding.shop_name=mapping.shop_name AND binding.douyin_product_id=mapping.douyin_product_id AND binding.enabled=1
+        LEFT JOIN shipping_templates AS template ON template.id=binding.template_id
+        WHERE mapping.status='verified'
+        GROUP BY mapping.shop_name, mapping.douyin_product_id, binding.template_id, template.enabled
+    ) """
+    with connect_database(database_path) as connection:
+        if not connection.in_transaction:
+            connection.execute("BEGIN")
+        shops = [str(row[0]) for row in connection.execute("SELECT DISTINCT shop_name FROM douyin_sku_mappings WHERE status='verified' ORDER BY shop_name")]
+        selected_shop = shop_name or (shops[0] if shops else "")
+        if selected_shop and selected_shop not in shops:
+            raise ValueError("店铺不在当前商品映射中，请重新选择")
+        global_counts = connection.execute(cte + "SELECT SUM(template_id IS NULL), SUM(template_id IS NOT NULL AND COALESCE(template_enabled,0)=0) FROM grouped").fetchone()
+        filters = ["shop_name=?"]
+        parameters = [selected_shop]
+        if status == "unbound":
+            filters.append("template_id IS NULL")
+        elif status == "bound":
+            filters.append("template_id IS NOT NULL")
+        elif status == "unavailable":
+            filters.append("template_id IS NOT NULL AND COALESCE(template_enabled,0)=0")
+        if query.strip():
+            filters.append("(instr(lower(product_name),lower(?))>0 OR instr(douyin_product_id,?)>0)")
+            parameters.extend([query.strip(), query.strip()])
+        where = " WHERE " + " AND ".join(filters)
+        total = int(connection.execute(cte + "SELECT COUNT(*) FROM grouped" + where, parameters).fetchone()[0])
+        pages = max(1, (total + 99) // 100)
+        page = min(page, pages)
+        products = connection.execute(cte + "SELECT * FROM grouped" + where + " ORDER BY douyin_product_id LIMIT 100 OFFSET ?", [*parameters, (page - 1) * 100]).fetchall()
+    return {"products": [dict(row) for row in products], "shops": shops, "shop_name": selected_shop,
+            "unbound_count": int(global_counts[0] or 0), "unavailable_count": int(global_counts[1] or 0),
+            "filtered_count": total, "page": page, "page_count": pages, "page_size": 100}
+
+
+def shipping_template_impact(database_path: str | Path, normalized: dict) -> dict:
+    template_id = normalized["template_id"]
+    old = next((item for item in list_shipping_templates(database_path) if item["id"] == template_id), None)
+    if template_id is not None and old is None:
+        raise ValueError("运费模板不存在，请刷新后重新选择")
+    with connect_database(database_path) as connection:
+        counts = connection.execute("""
+            SELECT COUNT(DISTINCT binding.shop_name), COUNT(DISTINCT binding.id), COUNT(mapping.douyin_sku_id)
+            FROM shipping_product_bindings AS binding
+            LEFT JOIN douyin_sku_mappings AS mapping ON mapping.shop_name=binding.shop_name AND mapping.douyin_product_id=binding.douyin_product_id
+            WHERE binding.template_id=?
+        """, (template_id,)).fetchone()
+    before = {rule["region"]: rule for rule in old["region_rules"]} if old else {}
+    after = {rule["region"]: rule for rule in normalized["region_rules"]}
+    return {"before": old, "affected_shops": counts[0], "affected_products": counts[1], "affected_skus": counts[2],
+            "region_changes": [{"region": region, "before": before.get(region), "after": after.get(region)}
+                               for region in sorted(before.keys() | after.keys()) if before.get(region) != after.get(region)]}
+
+
+def shipping_binding_changes(database_path: str | Path, normalized: dict) -> dict:
+    with connect_database(database_path) as connection:
+        template = connection.execute("SELECT name, enabled FROM shipping_templates WHERE id=?", (normalized["template_id"],)).fetchone()
+        if template is None or not template["enabled"]:
+            raise ValueError("目标运费模板不存在或已停用，请刷新后重新选择")
+        changes = []
+        for product_id in normalized["douyin_product_ids"]:
+            row = connection.execute("""SELECT COUNT(mapping.douyin_sku_id) AS sku_count, binding.template_id, template.name
+                FROM douyin_sku_mappings AS mapping
+                LEFT JOIN shipping_product_bindings AS binding ON binding.shop_name=mapping.shop_name AND binding.douyin_product_id=mapping.douyin_product_id AND binding.enabled=1
+                LEFT JOIN shipping_templates AS template ON template.id=binding.template_id
+                WHERE mapping.shop_name=? AND mapping.douyin_product_id=?
+                GROUP BY binding.template_id, template.name""", (normalized["shop_name"], product_id)).fetchone()
+            if row is None:
+                raise ValueError("所选商品已不在该店铺，请刷新后重新选择")
+            changes.append({"product_id": product_id, "sku_count": row["sku_count"], "before": row["name"], "after": template["name"]})
+    return {"changes": changes, "template_name": template["name"]}
 
 
 def match_default_shipping_template(
@@ -668,9 +776,9 @@ def _normalize_region_rules(
         normalized.append(
             {
                 "region": region,
-                "first_fee": _nonnegative_decimal(rule.get("first_fee", 0), "地区首费"),
+                "first_fee": _nonnegative_decimal(rule.get("first_fee"), "地区首费"),
                 "additional_fee": _nonnegative_decimal(
-                    rule.get("additional_fee", 0), "地区续费"
+                    rule.get("additional_fee"), "地区续费"
                 ),
                 "free_shipping": free_shipping,
             }

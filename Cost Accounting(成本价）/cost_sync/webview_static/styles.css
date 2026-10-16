@@ -416,3 +416,17 @@ body.busy button, body.busy input { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; transition: none !important; }
 }
+:root .cost-import-card { margin-bottom: 20px; }
+.cost-import-card h2 { margin: 0 0 12px; }
+.cost-import-card summary { cursor: pointer; font-weight: 700; padding: 8px 0; }
+.cost-import-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 18px; margin: 20px 0; }
+.cost-import-card label { display: grid; gap: 8px; min-width: 0; }
+.cost-import-card input:not([type="checkbox"]), .cost-import-card select { width: 100%; min-width: 0; }
+.cost-confirmations { display: grid; gap: 16px; margin: 20px 0; }
+.cost-confirmations label { display: flex; align-items: flex-start; gap: 10px; }
+.cost-confirmations input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 18px; margin: 3px 0 0; }
+.cost-table-scroll { overflow: auto; max-height: 280px; margin-top: 16px; }
+.cost-table-scroll table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+.cost-table-scroll th, .cost-table-scroll td { border: 1px solid var(--border, #d9e0e7); padding: 8px 12px; max-width: 320px; overflow-wrap: anywhere; vertical-align: top; }
+.cost-import-detail { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.8; }
+.cost-import-card[hidden], .cost-table-scroll[hidden], .cost-confirmations label[hidden] { display: none; }

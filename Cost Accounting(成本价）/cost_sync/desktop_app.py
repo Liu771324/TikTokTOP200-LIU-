@@ -34,6 +34,8 @@ from cost_sync.mapping_review import (
     resolve_mapping_review_candidate,
 )
 from cost_sync.official_service_fee import load_bundled_service_fee_catalog
+from cost_sync.publication import RecoveryRequiredError, recover_publication, require_no_pending_publication
+from cost_sync.cost_import import CostImportManager
 from cost_sync.shipping import (
     apply_shipping_product_bindings,
     apply_shipping_template_update,
@@ -41,6 +43,9 @@ from cost_sync.shipping import (
     list_shipping_templates,
     normalize_shipping_product_bindings,
     normalize_shipping_template,
+    read_shipping_binding_page,
+    shipping_template_impact,
+    shipping_binding_changes,
 )
 from cost_sync.service_fee import (
     archive_legacy_service_fee_rates,
@@ -70,6 +75,15 @@ def probe_health(port: int, *, timeout: float = 1.0) -> dict[str, object] | None
         with urllib.request.urlopen(
             f"http://127.0.0.1:{port}/health", timeout=timeout
         ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def probe_service_statistics(port: int) -> dict[str, object] | None:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/v1/status", timeout=2.0) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException):
         return None
@@ -176,6 +190,9 @@ class DesktopAdmin:
     ) -> None:
         self.catalog_manager = catalog_manager
         self.mapping_manager = mapping_manager
+        self.cost_import_manager = CostImportManager(
+            catalog_manager.database_path, catalog_manager.output_excel_path, lock=catalog_manager._lock
+        )
         self._shipping_preview: dict[str, object] | None = None
         self._shipping_binding_preview: dict[str, object] | None = None
         self._service_fee_preview: dict[str, object] | None = None
@@ -185,7 +202,8 @@ class DesktopAdmin:
         path = Path(path_value).resolve()
         if path.suffix.lower() != ".xlsx" or not path.is_file():
             raise ValueError(f"{label}必须是可读取的 XLSX 文件")
-        content = path.read_bytes()
+        with path.open("rb") as stream:
+            content = stream.read(MAX_CATALOG_FILE_BYTES + 1)
         if len(content) > MAX_CATALOG_FILE_BYTES:
             raise ValueError(f"{label}超过 16 MB 安全上限")
         return {
@@ -247,20 +265,25 @@ class DesktopAdmin:
     def get_shipping_templates(self) -> list[dict[str, object]]:
         return list_shipping_templates(self.mapping_manager.database_path)
 
-    def get_shipping_product_bindings(self) -> dict[str, object]:
-        return list_shipping_product_bindings(self.mapping_manager.database_path)
+    def get_shipping_product_bindings(self, options: dict | None = None) -> dict[str, object]:
+        if options is None:
+            return list_shipping_product_bindings(self.mapping_manager.database_path)
+        if set(options) - {"shop_name", "status", "query", "page"}:
+            raise ValueError("商品绑定查询参数无效")
+        return read_shipping_binding_page(self.mapping_manager.database_path, **options)
 
     def preview_shipping_product_bindings(
         self, payload: dict[str, object]
     ) -> dict[str, object]:
         normalized = normalize_shipping_product_bindings(payload)
+        changes = shipping_binding_changes(self.mapping_manager.database_path, normalized)
         preview_id = secrets.token_urlsafe(24)
         self._shipping_binding_preview = {
             "preview_id": preview_id,
             "database_revision": _database_revision(self.mapping_manager.database_path),
             "bindings": normalized,
         }
-        return {"preview_id": preview_id, **normalized}
+        return {"preview_id": preview_id, **normalized, **changes}
 
     def apply_shipping_product_bindings(self, preview_id: str) -> dict[str, object]:
         session = self._shipping_binding_preview
@@ -288,6 +311,7 @@ class DesktopAdmin:
         self, payload: dict[str, object]
     ) -> dict[str, object]:
         normalized = normalize_shipping_template(payload)
+        impact = shipping_template_impact(self.mapping_manager.database_path, normalized)
         preview_id = secrets.token_urlsafe(24)
         self._shipping_preview = {
             "preview_id": preview_id,
@@ -297,6 +321,7 @@ class DesktopAdmin:
         return {
             "preview_id": preview_id,
             "mode": "create" if normalized["template_id"] is None else "update",
+            "impact": impact,
             **normalized,
         }
 
@@ -326,9 +351,19 @@ class DesktopAdmin:
     def get_basic_service_fee_rates(
         self, *, archived: bool = False
     ) -> list[dict[str, object]]:
-        return list_basic_service_fee_rates(
+        rates = list_basic_service_fee_rates(
             self.mapping_manager.database_path, archived=archived
         )
+        today = datetime.now(SHANGHAI).date().isoformat()
+        current = {}
+        for rate in rates:
+            key = (rate["major_category"], *rate["category_levels"])
+            if rate["effective_from"] <= today and (key not in current or rate["effective_from"] > current[key]):
+                current[key] = rate["effective_from"]
+        for rate in rates:
+            key = (rate["major_category"], *rate["category_levels"])
+            rate["version_status"] = "future" if rate["effective_from"] > today else "current" if rate["effective_from"] == current.get(key) else "historical"
+        return rates
 
     def get_basic_service_fee_coverage(self) -> list[dict[str, int]]:
         coverage = list_basic_service_fee_coverage(self.mapping_manager.database_path)
@@ -449,6 +484,7 @@ class DesktopAdmin:
 
 
 def _database_revision(path: Path) -> tuple[int, int]:
+    require_no_pending_publication(path)
     stat = path.stat()
     return stat.st_size, stat.st_mtime_ns
 
@@ -480,7 +516,7 @@ class AssistantService:
         return self._server is not None and self._thread is not None and self._thread.is_alive()
 
     def matches_running_service(self, health: dict[str, object] | None) -> bool:
-        if not health or health.get("status") != "ok":
+        if not health or health.get("status") not in {"ok", "recovering", "database_unavailable"}:
             return False
         if health.get("environment") != self.environment:
             return False
@@ -489,7 +525,11 @@ class AssistantService:
     def start(self) -> str:
         with service_start_lock(self.port):
             if self.owns_running_service:
-                return "already_owned"
+                try:
+                    require_no_pending_publication(self.paths.database)
+                    return "already_owned"
+                except RecoveryRequiredError:
+                    self.stop()
             health = probe_health(self.port)
             if health is not None:
                 if self.matches_running_service(health):
@@ -497,6 +537,8 @@ class AssistantService:
                 raise RuntimeError(
                     f"本机端口 {self.port} 已被其它环境或数据目录的服务占用"
                 )
+            with create_management_lock(self.paths.database):
+                recover_publication(self.paths.database, self.paths.output_excel)
             if not self.paths.database.is_file():
                 raise FileNotFoundError("成本数据库不存在；请确认成本助手数据目录完整")
             self.paths.logs.mkdir(parents=True, exist_ok=True)
@@ -516,7 +558,16 @@ class AssistantService:
                 daemon=True,
             )
             self._thread.start()
+            self.invalidate_previews()
             return "started"
+
+    def invalidate_previews(self) -> None:
+        self.catalog_manager._session = None
+        self.mapping_manager._session = None
+        self.admin.cost_import_manager.session = None
+        self.admin._shipping_preview = None
+        self.admin._shipping_binding_preview = None
+        self.admin._service_fee_preview = None
 
     def stop(self) -> bool:
         if not self.owns_running_service:
@@ -528,6 +579,7 @@ class AssistantService:
         thread.join(timeout=5)
         self._server = None
         self._thread = None
+        self.invalidate_previews()
         return True
 
 

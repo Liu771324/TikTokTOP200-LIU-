@@ -247,6 +247,14 @@ def connect_database(path: str | Path) -> sqlite3.Connection:
     return connection
 
 
+def read_database(path: str | Path) -> sqlite3.Connection:
+    """Query an initialized catalogue without creating or migrating it."""
+    database = Path(path).resolve()
+    connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True, factory=ClosingConnection)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
 def _database_file_identity(path: Path) -> tuple[int, int] | None:
     try:
         stat = path.stat()
@@ -649,6 +657,9 @@ def copy_mapping_state(
     source = Path(source_path).resolve()
     uri = f"{source.as_uri()}?mode=ro"
     with closing(sqlite3.connect(uri, uri=True)) as previous:
+        scope = previous.execute("SELECT value FROM sync_state WHERE key='catalog_scope'").fetchone()
+        if scope is not None:
+            set_sync_state(target, {"catalog_scope": scope[0]})
         batch_columns = (
             "id, source_file, source_sha256, total_rows, verified_rows, pending_rows, "
             "inserted_rows, existing_rows, updated_rows, removed_rows, legacy_rows, "

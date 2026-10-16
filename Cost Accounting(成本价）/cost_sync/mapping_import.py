@@ -8,6 +8,7 @@ from contextlib import closing
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook
 
@@ -232,7 +233,7 @@ def preview_mapping_import(
 def _summarize_service_fee_coverage(
     database_path: Path, candidates: list[MappingCandidate]
 ) -> dict[str, int]:
-    effective_on = datetime.now().astimezone().date().isoformat()
+    effective_on = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
     with connect_database(database_path) as connection:
         rows = connection.execute(
             """
@@ -271,8 +272,8 @@ def _summarize_service_fee_coverage(
         )
         if any(not value for value in category):
             counts["incomplete_category_rows"] += 1
-            continue
-        counts["complete_category_rows"] += 1
+        else:
+            counts["complete_category_rows"] += 1
         matches = []
         for row in rows:
             if str(row["major_category"]) != candidate.major_category:

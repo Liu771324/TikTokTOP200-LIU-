@@ -54,6 +54,16 @@ def read_update_history(database_path: str | Path) -> list[dict[str, object]]:
             and latest_update_ids == {str(entry["update_id"])}
             and str(entry["update_id"]) in rollbackable_update_ids
         )
+        backup_name = entry.get("backup_file")
+        backup = database.parent / str(backup_name or "")
+        backup_available = bool(backup_name) and backup.resolve().parent == database.parent and backup.is_file()
+        if entry["can_rollback"] and not backup_available:
+            entry["can_rollback"] = False
+        entry["rollback_unavailable_reason"] = (
+            "" if entry["can_rollback"] else
+            "恢复备份不存在" if is_latest and not backup_available else
+            "只允许回滚有完整恢复记录的最新一次更新"
+        )
         latest_found = latest_found or is_latest
     return history
 
@@ -167,6 +177,7 @@ def _journal_history(connection: sqlite3.Connection) -> list[dict[str, object]]:
             allowed_details = {
                 "mode", "enabled_count", "ordinary_count", "combination_count",
                 "total_count", "fetched_count",
+                "source_files", "source_sha256", "source_file", "source", "scope",
             }
         elif kind == "shipping":
             allowed_details = {

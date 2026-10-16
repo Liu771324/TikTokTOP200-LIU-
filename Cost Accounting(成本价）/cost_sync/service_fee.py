@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import nullcontext
 
 import hashlib
 import json
@@ -8,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from .database import connect_database
+from .database import connect_database, read_database
 from .locks import management_locked
 from .update_rollback import backup_database, record_system_update
 
@@ -153,12 +154,12 @@ def list_basic_service_fee_coverage(
 
 
 def infer_major_category(
-    database_path: str | Path, category_level_1: object
+    database_path: str | Path, category_level_1: object, *, _connection=None
 ) -> str | None:
     category = str(category_level_1 or "").strip()
     if not category:
         return None
-    with connect_database(database_path) as connection:
+    with (nullcontext(_connection) if _connection is not None else read_database(database_path)) as connection:
         rows = connection.execute(
             """
             SELECT DISTINCT major_category
@@ -697,6 +698,7 @@ def match_basic_service_fee_rate(
     major_category: str | None = None,
     category_levels: tuple[str, str, str, str],
     effective_on: str,
+    _connection=None,
 ) -> BasicServiceFeeMatch:
     try:
         categories = _normalize_match_categories(category_levels)
@@ -708,7 +710,7 @@ def match_basic_service_fee_rate(
     if major_category is not None and not normalized_major_category:
         return BasicServiceFeeMatch(None, None, None, "经营大类未配置")
     target_date = _normalize_date(effective_on, field="查询日期")
-    with connect_database(database_path) as connection:
+    with (nullcontext(_connection) if _connection is not None else read_database(database_path)) as connection:
         row = connection.execute(
             """
             SELECT id, major_category, rate, effective_from, enabled

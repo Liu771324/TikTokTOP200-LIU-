@@ -3,7 +3,7 @@
 
   function filterShippingProducts(products, options = {}) {
     const shop = String(options.shop ?? "");
-    const status = ["all", "bound", "unbound"].includes(options.status)
+    const status = ["all", "bound", "unbound", "unavailable"].includes(options.status)
       ? options.status
       : "unbound";
     const query = String(options.query ?? "").trim().toLocaleLowerCase("zh-CN");
@@ -12,6 +12,7 @@
       const bound = Boolean(item.template_id);
       if (status === "bound" && !bound) return false;
       if (status === "unbound" && bound) return false;
+      if (status === "unavailable" && (!bound || Boolean(item.template_enabled))) return false;
       if (!query) return true;
       const searchable = `${item.product_name ?? ""} ${item.douyin_product_id ?? ""}`
         .toLocaleLowerCase("zh-CN");

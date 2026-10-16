@@ -21,6 +21,7 @@ from .database import (
 )
 from .excel import export_enabled_products, validate_excel
 from .locks import create_management_lock
+from .publication import cleanup_staged_files, publish_files, recover_publication
 from .update_rollback import backup_database, record_system_update
 from .windows import iter_time_windows
 
@@ -67,6 +68,7 @@ class SyncService:
 
     def _run(self, *, mode: str, date_field: str, start: datetime) -> SyncResult:
         with create_management_lock(self.config.database_path):
+            recover_publication(self.config.database_path, self.config.excel_path)
             return self._run_locked(mode=mode, date_field=date_field, start=start)
 
     def _run_locked(self, *, mode: str, date_field: str, start: datetime) -> SyncResult:
@@ -138,7 +140,7 @@ class SyncService:
 
             if exported_count != enabled_count:
                 raise ValueError("Excel 导出行数与 SQLite 启用商品数不一致")
-            validate_excel(staged_excel, expected_rows=enabled_count)
+            validate_excel(staged_excel, expected_rows=enabled_count, expected_database_path=staged_database)
             if self.config.database_path.exists():
                 stamp = datetime.now(SHANGHAI).strftime("%Y%m%d-%H%M%S-%f")
                 backup_path = self.config.database_path.with_name(
@@ -169,8 +171,7 @@ class SyncService:
                 (staged_excel, self.config.excel_path),
             )
         finally:
-            for staged_file in staged_files:
-                staged_file.unlink(missing_ok=True)
+            cleanup_staged_files(staged_files)
 
         return SyncResult(
             mode=mode,
@@ -190,31 +191,4 @@ def _create_temporary_file(
 
 
 def _publish_pair(*pairs: tuple[Path, Path]) -> None:
-    backups: dict[Path, Path] = {}
-    published: list[Path] = []
-    try:
-        for _, target in pairs:
-            if target.exists():
-                backup = _create_temporary_file(
-                    target.parent,
-                    prefix=f".{target.name}.",
-                    suffix=".previous",
-                )
-                backups[target] = backup
-                shutil.copy2(target, backup)
-
-        try:
-            for source, target in pairs:
-                os.replace(source, target)
-                published.append(target)
-        except Exception:
-            for target in reversed(published):
-                backup = backups.get(target)
-                if backup is not None:
-                    os.replace(backup, target)
-                elif target.exists():
-                    target.unlink()
-            raise
-    finally:
-        for backup in backups.values():
-            backup.unlink(missing_ok=True)
+    publish_files(list(pairs), database=pairs[0][1])

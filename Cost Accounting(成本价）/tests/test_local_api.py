@@ -384,7 +384,7 @@ class LocalApiTests(unittest.TestCase):
         self.assertEqual((0, 2), (
             payload["complete_category_rows"], payload["incomplete_category_rows"]
         ))
-        self.assertEqual((0, 0, 0), (
+        self.assertEqual((0, 2, 0), (
             payload["service_fee_matched_rows"],
             payload["service_fee_unconfigured_rows"],
             payload["service_fee_disabled_rows"],
@@ -585,7 +585,7 @@ class LocalApiTests(unittest.TestCase):
                 "FROM douyin_sku_mappings WHERE douyin_sku_id = 'B-001'"
             ).fetchone()))
 
-        health_status, _, health = self.request("/health")
+        health_status, _, health = self.request("/api/v1/status")
         self.assertEqual(200, health_status)
         self.assertIn("店铺A", health["mapping_shops"])
 

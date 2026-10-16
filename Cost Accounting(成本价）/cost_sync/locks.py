@@ -12,16 +12,23 @@ _registry_guard = threading.Lock()
 _thread_locks: dict[str, threading.RLock] = {}
 
 
-def create_management_lock(database_path: str | Path) -> "InterprocessMutex":
+class ManagementBusyError(RuntimeError):
+    pass
+
+
+def create_management_lock(database_path: str | Path, *, timeout_ms: int = 120_000) -> "InterprocessMutex":
     normalized = str(Path(database_path).resolve()).casefold().encode("utf-8")
     identity = hashlib.sha256(normalized).hexdigest()[:16]
-    return InterprocessMutex(f"{MANAGEMENT_MUTEX_PREFIX}.{identity}")
+    return InterprocessMutex(f"{MANAGEMENT_MUTEX_PREFIX}.{identity}", timeout_ms=timeout_ms)
 
 
 def management_locked(function):
     @wraps(function)
     def wrapper(database_path, *args, **kwargs):
         with create_management_lock(database_path):
+            from .publication import require_no_pending_publication
+
+            require_no_pending_publication(database_path)
             return function(database_path, *args, **kwargs)
 
     return wrapper
@@ -38,7 +45,8 @@ class InterprocessMutex:
         self._handle = None
 
     def __enter__(self):
-        self._thread_lock.acquire()
+        if not self._thread_lock.acquire(timeout=self.timeout_ms / 1000):
+            raise ManagementBusyError("成本资料操作正忙，请稍后重试")
         if os.name != "nt":
             return self
         try:
@@ -61,7 +69,7 @@ class InterprocessMutex:
             wait_result = int(wait_for_single_object(handle, self.timeout_ms))
             if wait_result not in (0x00000000, 0x00000080):
                 close_handle(handle)
-                raise RuntimeError("另一个成本助手仍在处理数据，请稍后重试")
+                raise ManagementBusyError("另一个成本助手仍在处理数据，请稍后重试")
             self._handle = handle
             return self
         except Exception:

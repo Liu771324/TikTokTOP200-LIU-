@@ -169,13 +169,16 @@ class TrueCostEstimateTests(unittest.TestCase):
             additional_weight="0.5",
             additional_fee="1",
             default_region="河北省",
-            enabled=False,
+            enabled=True,
             changed_at="2026-09-09T09:04:00+08:00",
         )
         save_shipping_product_binding(
             self.database, shop_name="铭香馆", douyin_product_id="P-001",
             template_id=template_id, changed_at="2026-09-09T09:05:00+08:00",
         )
+        with connect_database(self.database) as connection:
+            connection.execute("UPDATE shipping_templates SET enabled=0 WHERE id=?", (template_id,))
+            connection.commit()
 
         result = estimate_true_cost(
             self.database,

@@ -5,13 +5,14 @@ import base64
 import binascii
 import hashlib
 import json
+import logging
+import time
 import secrets
 import sqlite3
 import tempfile
-import threading
 import zipfile
 from contextlib import closing, contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,8 +23,8 @@ from zoneinfo import ZoneInfo
 from openpyxl.utils.exceptions import InvalidFileException
 
 from .catalog_import import apply_catalog_import, preview_catalog_import
-from .database import connect_database
-from .locks import InterprocessMutex, create_management_lock
+from .database import connect_database, read_database
+from .locks import InterprocessMutex, create_management_lock, ManagementBusyError
 from .mapping_import import (
     apply_shop_mapping_import,
     normalize_shop_name,
@@ -32,6 +33,7 @@ from .mapping_import import (
 )
 from .mapping_review import capture_mapping_review_candidates
 from .true_cost import estimate_true_cost
+from .publication import RecoveryRequiredError, recover_publication, require_no_pending_publication
 
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -51,8 +53,32 @@ class ProductRepository:
     def __init__(self, database_path: str | Path, *, environment: str = "unknown") -> None:
         self.database_path = Path(database_path).resolve()
         self.environment = environment
+        self.boot_id = secrets.token_hex(16)
+        self._summary: dict[str, object] = {}
+        self._summary_revision: str | None = None
+
+    def health(self) -> dict[str, object]:
+        status = "ok"
+        try:
+            require_no_pending_publication(self.database_path)
+        except RecoveryRequiredError:
+            status = "recovering"
+        try:
+            stat = self.database_path.stat()
+            revision = f"{stat.st_dev}:{stat.st_ino}:{stat.st_size}:{stat.st_mtime_ns}"
+        except OSError:
+            revision = None
+            status = "database_unavailable"
+        return {
+            **self._summary, "status": status, "ready": status == "ok", "environment": self.environment,
+            "service_id": database_service_id(self.database_path), "boot_id": self.boot_id,
+            "data_revision": revision, "catalog_label": self._summary.get("catalog_label", self.database_path.parent.name),
+            "statistics_stale": self._summary_revision != revision,
+            "capabilities": ["true_cost_breakdown_v1", "page_category_context_v1", "service_identity_v1"],
+        }
 
     def status(self) -> dict[str, object]:
+        revision = self.health()["data_revision"]
         with closing(self._connect()) as connection:
             total_count = int(connection.execute("SELECT COUNT(*) FROM products").fetchone()[0])
             enabled_count = int(
@@ -75,17 +101,19 @@ class ProductRepository:
                     "WHERE shop_name <> '历史导入' ORDER BY shop_name"
                 )
             ]
-        return {
-            "status": "ok",
-            "environment": self.environment,
-            "service_id": database_service_id(self.database_path),
+            label = connection.execute("SELECT value FROM sync_state WHERE key='catalog_scope'").fetchone()
+        summary = {
             "total_count": total_count,
             "enabled_count": enabled_count,
             "verified_mapping_count": verified_mapping_count,
             "mapping_shops": mapping_shops,
-            "capabilities": ["true_cost_breakdown_v1", "page_category_context_v1"],
+            "catalog_label": label[0] if label else self.database_path.parent.name,
             "last_successful_sync": None if row is None else row[0],
         }
+        if self.health()["data_revision"] == revision:
+            self._summary = summary
+            self._summary_revision = revision
+        return {**self.health(), **summary}
 
     def get_enabled_product(self, sku_id: str) -> dict[str, object] | None:
         with closing(self._connect()) as connection:
@@ -158,6 +186,11 @@ class ProductRepository:
         ):
             raise ValueError("抖店 SKUID 与页面类目必须一一对应")
         effective_on = datetime.now(SHANGHAI).date().isoformat()
+        with read_database(self.database_path) as connection:
+            connection.execute("BEGIN")
+            return self._estimate_batch(connection, douyin_sku_ids, lowest_prices, page_category_levels, effective_on, region)
+
+    def _estimate_batch(self, connection, douyin_sku_ids, lowest_prices, page_category_levels, effective_on, region):
         return [
             asdict(
                 estimate_true_cost(
@@ -167,6 +200,7 @@ class ProductRepository:
                     page_category_levels=page_categories,
                     effective_on=effective_on,
                     region=region,
+                    _connection=connection,
                 )
             )
             for douyin_sku_id, lowest_price, page_categories in zip(
@@ -178,6 +212,7 @@ class ProductRepository:
         ]
 
     def _connect(self) -> sqlite3.Connection:
+        require_no_pending_publication(self.database_path)
         if not self.database_path.is_file():
             raise FileNotFoundError(f"SQLite 文件不存在：{self.database_path}")
         uri = f"{self.database_path.as_uri()}?mode=ro"
@@ -204,7 +239,7 @@ class CatalogImportManager:
     ) -> None:
         self.database_path = Path(database_path).resolve()
         self.output_excel_path = Path(output_excel_path).resolve()
-        self._lock = lock or threading.Lock()
+        self._lock = lock or create_management_lock(self.database_path)
         self._session: CatalogPreviewSession | None = None
 
     def preview(self, payload: object) -> dict[str, object]:
@@ -274,6 +309,7 @@ class CatalogImportManager:
                     confirmed_ordinary_sha256=session.ordinary_sha256,
                     confirmed_combination_sha256=session.combination_sha256,
                     imported_at=datetime.now(SHANGHAI).replace(microsecond=0).isoformat(),
+                    source_names=(session.ordinary_name, session.combination_name),
                 )
             self._session = None
             return {
@@ -291,7 +327,7 @@ class CatalogImportManager:
     def _materialize(self, ordinary: bytes, combination: bytes):
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
-            prefix=".catalog-import-", dir=self.database_path.parent
+            prefix=".catalog-import-", dir=self.database_path.parent, ignore_cleanup_errors=True
         ) as temp_dir:
             root = Path(temp_dir)
             ordinary_path = root / "ordinary.xlsx"
@@ -340,7 +376,7 @@ class MappingPreviewSession:
 class MappingImportManager:
     def __init__(self, database_path: str | Path, *, lock=None) -> None:
         self.database_path = Path(database_path).resolve()
-        self._lock = lock or threading.Lock()
+        self._lock = lock or create_management_lock(self.database_path)
         self._session: MappingPreviewSession | None = None
 
     def preview(self, payload: object) -> dict[str, object]:
@@ -444,6 +480,7 @@ class MappingImportManager:
                 raise ValueError("本次预览没有可导入的新映射")
             with self._materialize(session.source_bytes) as source_path:
                 preview = preview_mapping_import(self.database_path, source_path)
+                preview = replace(preview, source_file=session.source_name)
                 changes = preview_shop_mapping_changes(
                     self.database_path, preview, session.shop_name
                 )
@@ -494,6 +531,7 @@ class MappingImportManager:
                 raise ValueError("成本库或店铺映射在预览后已更新，请重新预览")
             with self._materialize(session.source_bytes) as source_path:
                 preview = preview_mapping_import(self.database_path, source_path)
+                preview = replace(preview, source_file=session.source_name)
                 changes = preview_shop_mapping_changes(
                     self.database_path, preview, session.shop_name
                 )
@@ -523,7 +561,7 @@ class MappingImportManager:
     def _materialize(self, source: bytes):
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
-            prefix=".mapping-import-", dir=self.database_path.parent
+            prefix=".mapping-import-", dir=self.database_path.parent, ignore_cleanup_errors=True
         ) as temp_dir:
             source_path = Path(temp_dir) / "douyin-mappings.xlsx"
             source_path.write_bytes(source)
@@ -547,16 +585,18 @@ def create_server(
         raise ValueError("不允许使用通配符跨域来源")
     if environment not in {"test", "production", "unknown"}:
         raise ValueError("environment 必须是 test、production 或 unknown")
-    repository = ProductRepository(database_path, environment=environment)
-    with connect_database(database_path) as connection:
-        connection.commit()
-    repository.status()
     database = Path(database_path).resolve()
     output_excel = (
         database.parent / "enabled_product_costs.xlsx"
         if output_excel_path is None
         else Path(output_excel_path).resolve()
     )
+    with create_management_lock(database):
+        recover_publication(database, output_excel)
+        with connect_database(database) as connection:
+            connection.commit()
+    repository = ProductRepository(database, environment=environment)
+    repository.status()
     if (catalog_manager is None) != (mapping_manager is None):
         raise ValueError("商品与映射管理器必须同时提供")
     if catalog_manager is None:
@@ -579,6 +619,26 @@ def _make_handler(
         server_version = "CostAccountingLocal/1"
 
         def do_GET(self) -> None:
+            origin = self.headers.get("Origin")
+            if (origin is not None and origin not in allowed_origins) or urlparse(self.path).path == "/health":
+                self._read_GET()
+                return
+            started = time.monotonic()
+            try:
+                with create_management_lock(repository.database_path, timeout_ms=1500):
+                    require_no_pending_publication(repository.database_path)
+                    self._read_GET()
+            except (RecoveryRequiredError, ManagementBusyError):
+                self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "成本资料正在更新或等待恢复，请稍后重试")
+            finally:
+                endpoint = urlparse(self.path).path
+                if endpoint.startswith("/api/v1/products/"):
+                    endpoint = "/api/v1/products/:sku"
+                if endpoint not in {"/api/v1/products", "/api/v1/products/:sku", "/api/v1/mappings", "/api/v1/true-costs", "/api/v1/status"}:
+                    endpoint = "/unknown"
+                logging.getLogger("cost-assistant").info("只读请求 path=%s status=%s elapsed_ms=%.1f boot=%s", endpoint, getattr(self, "_response_status", "interrupted"), (time.monotonic() - started) * 1000, repository.boot_id)
+
+        def _read_GET(self) -> None:
             try:
                 origin = self.headers.get("Origin")
                 if origin is not None and origin not in allowed_origins:
@@ -586,6 +646,9 @@ def _make_handler(
                     return
                 parsed = urlparse(self.path)
                 if parsed.path == "/health":
+                    self._send_json(HTTPStatus.OK, repository.health())
+                    return
+                if parsed.path == "/api/v1/status":
                     self._send_json(HTTPStatus.OK, repository.status())
                     return
                 if parsed.path == "/api/v1/products":
@@ -669,7 +732,7 @@ def _make_handler(
                 self._send_error(HTTPStatus.NOT_FOUND, "接口不存在")
             except ValueError as exc:
                 self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
-            except (OSError, sqlite3.Error):
+            except (OSError, sqlite3.Error, RecoveryRequiredError):
                 self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "本地成本数据库暂不可用")
 
         def do_OPTIONS(self) -> None:
@@ -723,7 +786,7 @@ def _make_handler(
                 self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
             except (zipfile.BadZipFile, InvalidFileException):
                 self._send_error(HTTPStatus.BAD_REQUEST, "上传文件不是有效的 XLSX 文件")
-            except (OSError, sqlite3.Error):
+            except (OSError, sqlite3.Error, RecoveryRequiredError):
                 self._send_error(HTTPStatus.SERVICE_UNAVAILABLE, "本机数据更新暂时无法完成")
 
         def log_message(self, format: str, *args: object) -> None:
@@ -733,6 +796,9 @@ def _make_handler(
             self._send_json(status, {"error": message})
 
         def _send_json(self, status: HTTPStatus, payload: object) -> None:
+            self._response_status = int(status)
+            if status == HTTPStatus.OK and isinstance(payload, dict) and urlparse(self.path).path.startswith("/api/v1/"):
+                payload = {**payload, "service": repository.health()}
             body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
                 "utf-8"
             )
@@ -769,6 +835,7 @@ def _make_handler(
 
 
 def _database_revision(database_path: str | Path) -> tuple[int, int]:
+    require_no_pending_publication(database_path)
     stat = Path(database_path).resolve().stat()
     return stat.st_size, stat.st_mtime_ns
 

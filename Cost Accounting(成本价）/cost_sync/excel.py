@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -38,6 +39,8 @@ def export_enabled_products(connection: sqlite3.Connection, path: str | Path) ->
         count += 1
         row_number = count + 1
         worksheet.cell(row_number, 1).number_format = "@"
+        worksheet.cell(row_number, 1).data_type = "s"
+        worksheet.cell(row_number, 2).data_type = "s"
         worksheet.cell(row_number, 3).number_format = "0.00########"
         worksheet.cell(row_number, 4).number_format = "yyyy-mm-dd hh:mm:ss"
 
@@ -51,7 +54,9 @@ def export_enabled_products(connection: sqlite3.Connection, path: str | Path) ->
     return count
 
 
-def validate_excel(path: str | Path, *, expected_rows: int) -> None:
+def validate_excel(
+    path: str | Path, *, expected_rows: int, expected_database_path: str | Path | None = None
+) -> None:
     workbook = load_workbook(path, read_only=False, data_only=True)
     try:
         if SHEET_NAME not in workbook.sheetnames:
@@ -63,7 +68,20 @@ def validate_excel(path: str | Path, *, expected_rows: int) -> None:
         if worksheet.max_row - 1 != expected_rows:
             raise ValueError("Excel 数据行数与 SQLite 启用商品数不一致")
         for cell in worksheet["A"][1:]:
-            if cell.number_format != "@":
+            if cell.number_format != "@" or not isinstance(cell.value, str):
                 raise ValueError("Excel 商品编码列未按文本格式保存")
+        if expected_database_path is not None:
+            uri = f"{Path(expected_database_path).resolve().as_uri()}?mode=ro"
+            with closing(sqlite3.connect(uri, uri=True)) as connection:
+                expected = connection.execute(
+                    "SELECT sku_id, name, cost_price FROM products WHERE enabled = 1 ORDER BY sku_id"
+                )
+                for cells, product in zip(worksheet.iter_rows(min_row=2, values_only=True), expected, strict=True):
+                    actual_price = None if cells[2] is None else Decimal(str(cells[2]))
+                    expected_price = None if product[2] is None else Decimal(product[2])
+                    if cells[0] != product[0] or (cells[1] or "") != product[1]:
+                        raise ValueError("Excel 商品编码或名称与 SQLite 不一致")
+                    if actual_price != expected_price:
+                        raise ValueError("Excel 成本与 SQLite 不一致或超出 Excel 数值精度，已拒绝发布")
     finally:
         workbook.close()

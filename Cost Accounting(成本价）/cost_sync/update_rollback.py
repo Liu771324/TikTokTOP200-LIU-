@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import sqlite3
 import tempfile
 from contextlib import closing
@@ -14,6 +13,7 @@ from pathlib import Path
 from .database import connect_database, count_products
 from .excel import export_enabled_products, validate_excel
 from .locks import management_locked
+from .publication import cleanup_staged_files, publish_files
 
 
 @dataclass(frozen=True)
@@ -145,16 +145,14 @@ def rollback_latest_update(
                 exported = export_enabled_products(connection, staged_excel)
                 if exported != enabled_count:
                     raise ValueError("回滚后的 Excel 行数与启用商品数不一致")
-                validate_excel(staged_excel, expected_rows=enabled_count)
+                validate_excel(staged_excel, expected_rows=enabled_count, expected_database_path=staged_database)
         pairs: list[tuple[Path, Path]] = []
         if staged_excel is not None:
             pairs.append((staged_excel, output_excel))
         pairs.append((staged_database, database))
         _publish_rollback(pairs, database)
     finally:
-        staged_database.unlink(missing_ok=True)
-        if staged_excel is not None:
-            staged_excel.unlink(missing_ok=True)
+        cleanup_staged_files([staged_database] + ([] if staged_excel is None else [staged_excel]))
 
     return RollbackResult(
         update_key=update_key,
@@ -263,47 +261,4 @@ def _temporary_file(directory: Path, name: str, suffix: str) -> Path:
 
 
 def _publish_rollback(pairs: list[tuple[Path, Path]], database: Path) -> None:
-    previous: dict[Path, Path] = {}
-    published: list[Path] = []
-    restored = False
-    succeeded = False
-    try:
-        for _, target in pairs:
-            if target.exists():
-                snapshot = _temporary_file(target.parent, target.name, ".previous")
-                shutil.copy2(target, snapshot)
-                previous[target] = snapshot
-        try:
-            for source, target in pairs:
-                os.replace(source, target)
-                published.append(target)
-            succeeded = True
-        except Exception as publish_error:
-            restoration_errors: list[str] = []
-            for target in reversed(published):
-                snapshot = previous.get(target)
-                try:
-                    if snapshot is None:
-                        target.unlink(missing_ok=True)
-                    else:
-                        os.replace(snapshot, target)
-                except OSError as restore_error:
-                    restoration_errors.append(f"{target.name}: {restore_error}")
-            if restoration_errors:
-                retained = ", ".join(path.name for path in previous.values() if path.exists())
-                raise RuntimeError(
-                    "回滚发布失败，自动恢复也失败；已保留恢复文件 "
-                    f"{retained}。详情：{'；'.join(restoration_errors)}"
-                ) from publish_error
-            restored = True
-            raise
-    finally:
-        if not published or restored or succeeded:
-            for snapshot in previous.values():
-                try:
-                    snapshot.unlink(missing_ok=True)
-                except OSError:
-                    # Publication has already committed when succeeded is true.
-                    # A locked cleanup file must not turn that success into a
-                    # reported rollback failure; the snapshot is safe to retain.
-                    pass
+    publish_files(pairs, database=database)

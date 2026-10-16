@@ -203,7 +203,7 @@ class MappingImportPreviewTests(unittest.TestCase):
         self.assertEqual((3, 1), (
             preview.complete_category_rows, preview.incomplete_category_rows
         ))
-        self.assertEqual((1, 1, 1), (
+        self.assertEqual((1, 2, 1), (
             preview.service_fee_matched_rows,
             preview.service_fee_unconfigured_rows,
             preview.service_fee_disabled_rows,

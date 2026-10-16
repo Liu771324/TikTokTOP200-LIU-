@@ -330,14 +330,14 @@
     const messages = {
       service_unavailable: "本机成本服务未启动或数据库不可用。抖店页面不受影响。",
       record_limit_exceeded: "当前页面 SKU 数量超过 2000 条安全上限，请缩小侧栏范围后重试。",
-      invalid_cost: "聚水潭成本为负数，无法计算。",
+      invalid_cost: "商品基础成本为负数，无法计算。",
       platform_sku_missing: "页面未识别到平台 SKUID，已停止匹配。",
       mapping_missing: "尚未采集商家编码。请打开对应商品编辑页，让扩展只读记录 ERP 编码。",
       mapping_conflict: "同一 SKUID 观察到不同商家编码，已停止自动匹配。",
-      cost_not_found: "当前成本库中未找到该商家编码。沙箱与正式账号数据通常不同。",
+      cost_not_found: "当前成本目录中未找到该商家编码，请核对来源目录和精确映射。",
       lowest_missing: "最低到手价缺失；没有使用原价、校验价或普惠价替代。",
-      cost_missing: "聚水潭成本价为空，无法计算。",
-      zero_cost: "聚水潭成本为 0，无法计算较成本涨跌率。"
+      cost_missing: "商品基础成本为空，无法计算。",
+      zero_cost: "商品基础成本为 0，无法计算较成本涨跌率。"
     };
     return { tone: "warning", rate: "—", reason: messages[item.status] ?? "当前 SKU 暂不可计算。" };
   }
@@ -348,12 +348,23 @@
   }
 
   function shippingLabel(estimate) {
-    return estimate?.shipping_estimated_from_first_weight
-      ? "估算运费（按首重估算）"
-      : "估算运费";
+    const notes = [];
+    if (estimate?.shipping_estimated_from_first_weight) notes.push("按首重估算");
+    if (!estimate?.shipping_region) notes.push("基础规则/未指定地区");
+    return `估算运费${notes.length ? `（${notes.join("；")}）` : ""}`;
   }
 
   function serviceStatusText(state) {
+    const statuses = {
+      unpaired: "成本服务：请连接当前成本目录",
+      identity_mismatch: "成本服务：目录不一致，已停止展示",
+      reconnecting: "成本服务：正在重连 / 等待资料就绪",
+      extension_error: "扩展通信异常，请刷新页面",
+      origin_rejected: "成本查询未获允许，请核对配套扩展",
+      protocol_error: "服务版本不兼容，请同步更新",
+      checking: "成本服务：正在核对连接"
+    };
+    if (statuses[state?.serviceStatus]) return statuses[state.serviceStatus];
     if (state?.serviceStatus === "ok") {
       if (Number(state.failedBatchCount) > 0) {
         return `成本服务：已连接（${Number(state.failedBatchCount)} 个批次待重试）`;
@@ -380,14 +391,14 @@
       : `¥${value}`;
     return [
       [item?.priceSource ? "侧栏最低到手" : "最低到手", money(item?.lowestPrice)],
-      ["聚水潭成本", money(estimate.product_cost)],
+      ["商品基础成本", money(estimate.product_cost)],
       [shippingLabel(estimate), money(estimate.shipping_fee)],
       ["基础服务费", money(estimate.basic_service_fee)],
       ["基础费率", estimate.basic_service_fee_rate ?? "未找到"]
     ];
   }
 
-  function mountActivityPanel(documentRef) {
+  function mountActivityPanel(documentRef, options = {}) {
     const existing = documentRef.getElementById("__ca_cost_panel__");
     if (existing?.__costAccountingController) return existing.__costAccountingController;
 
@@ -395,7 +406,7 @@
     host.id = "__ca_cost_panel__";
     const shadow = host.attachShadow({ mode: "open" });
     const style = documentRef.createElement("style");
-    style.textContent = CSS_TEXT;
+    style.textContent = `${CSS_TEXT}\n.ca-pair { margin: 10px 14px; padding: 9px 12px; border: 1px solid #17735c; border-radius: 8px; background: #eef8f4; color: #105947; font: inherit; cursor: pointer; } .ca-pair[hidden] { display: none; }`;
     shadow.append(style);
 
     const panel = createElement(documentRef, "section", "ca-panel");
@@ -420,6 +431,14 @@
     const bannerText = createElement(documentRef, "span", "", "正在读取本机成本服务状态");
     banner.append(badge, bannerText);
     panel.append(banner);
+    const pairButton = createElement(documentRef, "button", "ca-pair", "连接当前成本目录");
+    pairButton.type = "button";
+    pairButton.hidden = true;
+    let pairing = null;
+    pairButton.addEventListener("click", (event) => {
+      if (event.isTrusted && pairing && typeof options.onPair === "function") options.onPair(pairing);
+    });
+    panel.append(pairButton);
 
     const list = createElement(documentRef, "div", "ca-list");
     list.append(createElement(documentRef, "p", "ca-empty", "正在识别当前已加载的 SKU…"));
@@ -454,8 +473,8 @@
       }
       const environment = state?.environment ?? "unknown";
       if (environment === "test") {
-        badge.textContent = "沙箱演示";
-        bannerText.textContent = "共享测试数据，仅验证流程，不用于报名或定价";
+        badge.textContent = "测试环境标记";
+        bannerText.textContent = "请核对已连接的本机成本目录；环境标记不代表数据来源";
       } else if (environment === "production") {
         badge.textContent = "正式数据";
         bannerText.textContent = "仍需完成人工抽查后才能用于业务判断";
@@ -465,12 +484,15 @@
       }
 
       service.dataset.status = state?.serviceStatus ?? "unavailable";
+      pairing = state?.pairing || null;
+      pairButton.hidden = !pairing || !["unpaired", "identity_mismatch"].includes(state?.serviceStatus);
+      pairButton.textContent = `${state?.serviceStatus === "identity_mismatch" ? "核对后改为" : "连接"}“${pairing?.label || "当前成本目录"}”`;
       service.textContent = serviceStatusText(state);
       const items = state?.items ?? [];
       sync.textContent = `侧栏 SKU：${items.length}｜同步：${state?.lastSuccessfulSync ?? "—"}`;
       list.replaceChildren();
       const warnings = Array.from(new Set(
-        (state?.warnings ?? [])
+        [...(state?.warnings ?? []), ...(state?.serviceStatus !== "ok" && state?.serviceError ? [state.serviceError] : [])]
           .map((warning) => typeof warning === "string" ? warning : warning?.message)
           .filter(Boolean)
       ));
@@ -507,7 +529,7 @@
           const values = createElement(documentRef, "div", "ca-values");
           for (const [label, number] of [
             [item.priceSource ? "侧栏最低到手" : "最低到手", `¥${item.comparison.lowest}`],
-            ["聚水潭成本", `¥${estimate.product_cost}`],
+            ["商品基础成本", `¥${estimate.product_cost}`],
             [shippingLabel(estimate), `¥${estimate.shipping_fee}`],
             ["基础服务费", `¥${estimate.basic_service_fee}`],
             ["真实成本", `¥${item.comparison.cost}`],

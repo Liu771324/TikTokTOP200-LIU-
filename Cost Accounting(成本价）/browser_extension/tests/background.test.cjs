@@ -6,9 +6,9 @@ const vm = require("node:vm");
 
 const core = require("../core.js");
 
-function createWorkerHarness(fetchImpl) {
+function createWorkerHarness(fetchImpl, environment = "test") {
   let listener = null;
-  const storage = {};
+  const storage = { costServiceBinding: { service_id: "fixture-service", environment } };
   const context = {
     AbortController,
     CostAccountingCore: core,
@@ -55,12 +55,75 @@ function createWorkerHarness(fetchImpl) {
 }
 
 function jsonResponse(payload, status = 200) {
+  const identity = { service_id: "fixture-service", boot_id: "fixture-boot", data_revision: "fixture-revision", ready: true, status: "ok" };
+  payload = payload.environment
+    ? { ...identity, ...payload, capabilities: [...(payload.capabilities || []), "service_identity_v1"] }
+    : { service: identity, ...payload };
   return {
     ok: status >= 200 && status < 300,
     status,
     async json() { return structuredClone(payload); }
   };
 }
+
+const activitySender = { id: "extension-id", url: "https://fxg.jinritemai.com/ffa/merchant/child-campaign-detail" };
+
+test("first connection requires pairing and never queries cost before confirmation", async () => {
+  const paths = [];
+  const harness = createWorkerHarness(async url => {
+    paths.push(new URL(url).pathname);
+    return jsonResponse({ environment: "test" });
+  });
+  delete harness.storage.costServiceBinding;
+  const result = await harness.dispatch({ type: "GET_ACTIVITY_STATE", records: [{ platformSkuId: "D1", lowestPrice: "5" }] }, activitySender);
+  assert.equal(result.state.serviceStatus, "unpaired");
+  assert.deepEqual(paths, ["/health"]);
+  const paired = await harness.dispatch({ type: "PAIR_COST_SERVICE", service_id: "fixture-service" }, activitySender);
+  assert.equal(paired.ok, true);
+  const health = await harness.dispatch({ type: "GET_SERVICE_HEALTH", force: true }, activitySender);
+  assert.equal(health.state.serviceStatus, "ok");
+});
+
+test("same directory reconnects across boot changes while another directory is blocked", async () => {
+  let boot = "first", identity = "fixture-service";
+  const harness = createWorkerHarness(async () => jsonResponse({ environment: "test", boot_id: boot, service_id: identity }));
+  const before = await harness.dispatch({ type: "GET_SERVICE_HEALTH", force: true }, activitySender);
+  boot = "second";
+  const after = await harness.dispatch({ type: "GET_SERVICE_HEALTH", force: true }, activitySender);
+  assert.equal(after.state.serviceStatus, "ok");
+  assert.ok(after.state.generation > before.state.generation);
+  identity = "another-directory";
+  const foreign = await harness.dispatch({ type: "GET_SERVICE_HEALTH", force: true }, activitySender);
+  assert.equal(foreign.state.serviceStatus, "identity_mismatch");
+});
+
+test("missing runtime identity cannot silently use legacy cost results", async () => {
+  const harness = createWorkerHarness(async () => jsonResponse({ environment: "test", boot_id: "" }));
+  const health = await harness.dispatch({ type: "GET_SERVICE_HEALTH", force: true }, activitySender);
+  assert.equal(health.state.serviceStatus, "protocol_error");
+});
+
+test("publication recovery blocks costs until ready", async () => {
+  const harness = createWorkerHarness(async () => jsonResponse({ environment: "test", ready: false, status: "recovering" }));
+  const result = await harness.dispatch({ type: "GET_ACTIVITY_STATE", records: [{ platformSkuId: "D1", lowestPrice: "5" }] }, activitySender);
+  assert.equal(result.state.serviceStatus, "reconnecting");
+  assert.equal(result.state.items[0].comparison, undefined);
+});
+
+test("late true-cost response from another boot is discarded", async () => {
+  const harness = createWorkerHarness(async url => new URL(url).pathname === "/health"
+    ? jsonResponse({ environment: "test", capabilities: ["true_cost_breakdown_v1"] })
+    : jsonResponse({ service: { service_id: "fixture-service", boot_id: "old-boot", data_revision: "fixture-revision", ready: true }, true_costs: [{ douyin_sku_id: "D1", available: true, true_cost: "1", product_cost: "1" }] }));
+  const result = await harness.dispatch({ type: "GET_ACTIVITY_STATE", records: [{ platformSkuId: "D1", lowestPrice: "5" }] }, activitySender);
+  assert.equal(result.state.serviceStatus, "reconnecting");
+  assert.equal(result.state.items[0].trueCost, undefined);
+});
+
+test("origin denial is distinct from service offline", async () => {
+  const harness = createWorkerHarness(async () => jsonResponse({}, 403));
+  const result = await harness.dispatch({ type: "GET_SERVICE_HEALTH", force: true }, activitySender);
+  assert.equal(result.state.serviceStatus, "origin_rejected");
+});
 
 test("worker rejects messages outside the verified Douyin origin", async () => {
   let fetchCount = 0;
@@ -115,7 +178,7 @@ test("worker uses the true-cost capability and keeps SKU-price pairs aligned", a
       lowest_price: "30", true_cost: "23.5", cost_difference: "6.5",
       difference_rate_percent: "+27.66", unconfigured_reasons: [], estimated: true
     }] });
-  });
+  }, "production");
 
   const response = await harness.dispatch(
     {
@@ -235,7 +298,7 @@ test("a failed true-cost batch is retried and does not mark a healthy service un
         unconfigured_reasons: []
       }))
     });
-  });
+  }, "production");
   const records = Array.from({ length: 101 }, (_, index) => ({
     platformSkuId: `D${index}`,
     lowestPrice: "5"

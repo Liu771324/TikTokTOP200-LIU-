@@ -9,9 +9,13 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import urlsplit, urlunsplit
 
-from cost_sync.desktop_app import APP_NAME, AssistantService, probe_health, read_log_tail
+from cost_sync.desktop_app import APP_NAME, AssistantService, probe_health, probe_service_statistics, read_log_tail
 from cost_sync.update_history import read_update_history
 from cost_sync.update_rollback import rollback_latest_update
+from cost_sync.locks import create_management_lock
+from cost_sync.publication import require_no_pending_publication
+from cost_sync.shipping import trial_shipping_fee
+from dataclasses import asdict
 
 
 WEBVIEW2_DOWNLOAD_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
@@ -26,6 +30,7 @@ BRIDGE_ACTIONS = frozenset(
         "get_update_history",
         "get_mapping_reviews",
         "get_shipping_templates",
+        "trial_shipping_fee",
         "get_shipping_product_bindings",
         "get_basic_service_fee_rates",
         "get_basic_service_fee_coverage",
@@ -35,6 +40,9 @@ BRIDGE_ACTIONS = frozenset(
         "start_service",
         "stop_service",
         "choose_file",
+        "inspect_cost_source",
+        "preview_cost_import",
+        "apply_cost_import",
         "preview_catalog",
         "apply_catalog",
         "preview_mapping",
@@ -56,6 +64,9 @@ SERIAL_ACTIONS = frozenset(
     {
         "start_service",
         "stop_service",
+        "inspect_cost_source",
+        "preview_cost_import",
+        "apply_cost_import",
         "preview_catalog",
         "apply_catalog",
         "preview_mapping",
@@ -145,6 +156,9 @@ class DesktopBridge:
         self._operation_lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._log_signature: tuple[int, int] | None = None
+        self._statistics: dict[str, object] = {}
+        self._statistics_revision = None
+        self._observed_boot_id = None
 
     def _attach_window(self, window) -> None:
         self._window = window
@@ -187,6 +201,15 @@ class DesktopBridge:
                     raise BridgeBusyError("另一项资料操作仍在进行，请等待完成")
             try:
                 handler = getattr(self, f"_action_{action}")
+                if action in SERIAL_ACTIONS:
+                    with create_management_lock(self.service.paths.database):
+                        if action not in {"start_service", "stop_service"}:
+                            require_no_pending_publication(self.service.paths.database)
+                        return {"ok": True, "result": handler(payload)}
+                if action not in {"get_state", "choose_file", "open_logs", "trial_shipping_fee"}:
+                    with create_management_lock(self.service.paths.database, timeout_ms=1500):
+                        require_no_pending_publication(self.service.paths.database)
+                        return {"ok": True, "result": handler(payload)}
                 return {"ok": True, "result": handler(payload)}
             finally:
                 if acquired:
@@ -203,6 +226,15 @@ class DesktopBridge:
         health = probe_health(self.service.port, timeout=0.5)
         expected = self.service.matches_running_service(health)
         with self._state_lock:
+            if expected and health.get("boot_id") != self._observed_boot_id:
+                if self._observed_boot_id is not None:
+                    self.service.invalidate_previews()
+                self._observed_boot_id = health.get("boot_id")
+            if expected and health.get("ready", True) and health.get("data_revision") != self._statistics_revision:
+                statistics = probe_service_statistics(self.service.port)
+                if statistics and self.service.matches_running_service(statistics) and statistics.get("data_revision") == health.get("data_revision"):
+                    self._statistics = statistics
+                    self._statistics_revision = statistics.get("data_revision")
             known_signature = None if force_log else self._log_signature
             log_content, signature = read_log_tail(
                 self.service.paths.logs / "cost-assistant.log",
@@ -212,12 +244,14 @@ class DesktopBridge:
         safe_health = None
         if health is not None:
             safe_health = {
+                **health,
                 "status": health.get("status"),
                 "environment": health.get("environment"),
-                "enabled_count": health.get("enabled_count", 0),
-                "verified_mapping_count": health.get("verified_mapping_count", 0),
-                "last_successful_sync": health.get("last_successful_sync"),
-                "mapping_shops": health.get("mapping_shops", []),
+                "enabled_count": self._statistics.get("enabled_count", health.get("enabled_count")),
+                "verified_mapping_count": self._statistics.get("verified_mapping_count", health.get("verified_mapping_count")),
+                "last_successful_sync": self._statistics.get("last_successful_sync", health.get("last_successful_sync")),
+                "mapping_shops": self._statistics.get("mapping_shops", health.get("mapping_shops", [])),
+                "statistics_stale": self._statistics_revision != health.get("data_revision"),
             }
         return {
             "expected": expected,
@@ -280,10 +314,16 @@ class DesktopBridge:
     ) -> list[dict[str, object]]:
         return self.service.admin.get_shipping_templates()
 
+    def _action_trial_shipping_fee(self, payload: dict[str, object]) -> dict[str, object]:
+        template = payload.get("template")
+        if not isinstance(template, dict):
+            raise ValueError("试算模板格式无效")
+        return asdict(trial_shipping_fee(template, weight_kg=payload.get("weight_kg"), region=str(payload.get("region") or "")))
+
     def _action_get_shipping_product_bindings(
-        self, _payload: dict[str, object]
+        self, payload: dict[str, object]
     ) -> dict[str, object]:
-        return self.service.admin.get_shipping_product_bindings()
+        return self.service.admin.get_shipping_product_bindings(payload or None)
 
     def _action_get_basic_service_fee_rates(
         self, payload: dict[str, object]
@@ -352,6 +392,7 @@ class DesktopBridge:
             "ordinary": "聚水潭导出表",
             "combination": "聚水潭导出表",
             "mapping": "抖店商品导出表",
+            "cost": "聚水潭导出表",
         }
         if kind not in directories:
             raise ValueError("不支持的文件槽位")
@@ -361,12 +402,13 @@ class DesktopBridge:
             webview.FileDialog.OPEN,
             directory=str(Path(__file__).resolve().parents[1] / directories[kind]),
             allow_multiple=False,
-            file_types=("Excel 工作簿 (*.xlsx)",),
+            file_types=("成本表 (*.xlsx;*.csv;*.tsv)",) if kind == "cost" else ("Excel 工作簿 (*.xlsx)",),
         )
         if not selected:
             return None
         path = Path(selected[0]).resolve()
-        if path.suffix.lower() != ".xlsx" or not path.is_file():
+        extensions = {".xlsx", ".csv", ".tsv"} if kind == "cost" else {".xlsx"}
+        if path.suffix.lower() not in extensions or not path.is_file():
             raise ValueError("请选择可读取的 XLSX 文件")
         return {"path": str(path), "name": path.name}
 
@@ -380,6 +422,28 @@ class DesktopBridge:
         health = probe_health(self.service.port, timeout=0.5)
         if not self.service.matches_running_service(health):
             raise RuntimeError("成本服务尚未就绪，请先在“运行概览”启动服务")
+
+    def _action_inspect_cost_source(self, payload: dict[str, object]) -> dict[str, object]:
+        self._ensure_service()
+        path = payload.get("path")
+        options = payload.get("options", {})
+        if (path is not None and not isinstance(path, str)) or not isinstance(options, dict):
+            raise ValueError("成本文件读取参数无效")
+        return self.service.admin.cost_import_manager.inspect(path, options)
+
+    def _action_preview_cost_import(self, payload: dict[str, object]) -> dict[str, object]:
+        self._ensure_service()
+        result = self.service.admin.cost_import_manager.preview(payload)
+        self.logger.info("通用成本预览：行数 %s，新增 %s，修改 %s，移除 %s", result["total_rows"], result["added"], result["changed"], result["removed"])
+        return result
+
+    def _action_apply_cost_import(self, payload: dict[str, object]) -> dict[str, object]:
+        self._ensure_service()
+        if set(payload) != {"preview_id"} or not isinstance(payload.get("preview_id"), str):
+            raise ValueError("确认只允许提交有效预览凭证")
+        result = self.service.admin.cost_import_manager.apply(payload["preview_id"])
+        self.logger.info("通用成本更新完成：商品 %s，备份 %s", result["total_count"], result["backup_file"])
+        return result
 
     def _action_preview_catalog(self, payload: dict[str, object]) -> dict[str, object]:
         self._ensure_service()

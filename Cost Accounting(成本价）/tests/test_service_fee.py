@@ -219,6 +219,8 @@ class BasicServiceFeeTests(unittest.TestCase):
         self.assertEqual("0.03", rates[("滋补保健", "营养保健/特医食品")])
 
     def test_trailing_missing_category_without_parent_rule_reports_rate_missing(self) -> None:
+        with connect_database(self.database):
+            pass
         result = match_basic_service_fee_rate(
             self.database,
             category_levels=("食品饮料", "休闲食品", "坚果炒货", ""),

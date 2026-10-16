@@ -22,9 +22,12 @@ from .database import (
 from .excel import export_enabled_products, validate_excel
 from .models import Product, normalize_decimal
 from .locks import management_locked
+from .publication import cleanup_staged_files
 from .sync import _create_temporary_file, _publish_pair
 from .update_rollback import backup_database, record_system_update
 from .xlsx_safety import MAX_IMPORT_ROWS, validate_xlsx_container
+from .tabular_source import iter_source_rows
+from .table_layout import locate_required_headers, header_text
 
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -33,16 +36,12 @@ ORDINARY_HEADERS = (
     "商品名称",
     "成本价",
     "商品状态",
-    "创建时间",
-    "修改时间",
 )
 COMBINATION_HEADERS = (
     "组合商品编码",
     "组合商品名称",
     "组合成本价",
     "商品状态",
-    "创建时间",
-    "修改时间",
     "商品编码",
     "数量",
     "子商品成本价",
@@ -157,6 +156,7 @@ def apply_catalog_import(
     confirmed_ordinary_sha256: str,
     confirmed_combination_sha256: str,
     imported_at: str,
+    source_names: tuple[str, str] | None = None,
 ) -> CatalogImportResult:
     if (
         preview.ordinary_products <= 0
@@ -233,18 +233,19 @@ def apply_catalog_import(
                         "enabled_count": enabled_count,
                         "ordinary_count": preview.ordinary_products,
                         "combination_count": preview.combination_products,
+                        "source_files": list(source_names or (preview.ordinary_path.name, preview.combination_path.name)),
+                        "source_sha256": [preview.ordinary_sha256, preview.combination_sha256],
                     },
                 )
             connection.commit()
             exported_count = export_enabled_products(connection, staged_excel)
         if exported_count != enabled_count:
             raise ValueError("Excel 导出行数与 SQLite 启用商品数不一致")
-        validate_excel(staged_excel, expected_rows=enabled_count)
+        validate_excel(staged_excel, expected_rows=enabled_count, expected_database_path=staged_database)
 
         _publish_pair((staged_database, database), (staged_excel, output_excel))
     finally:
-        staged_database.unlink(missing_ok=True)
-        staged_excel.unlink(missing_ok=True)
+        cleanup_staged_files([staged_database, staged_excel])
 
     return CatalogImportResult(
         total_count=total_count,
@@ -270,8 +271,8 @@ def _load_ordinary_products(path: Path) -> tuple[int, dict[str, Product]]:
             name=_text(row["商品名称"]),
             cost_price=normalize_decimal(row["成本价"], sku_id=sku_id),
             enabled=_enabled(row["商品状态"], sku_id),
-            created=_optional_text(row["创建时间"]),
-            modified=_optional_text(row["修改时间"]),
+            created=_optional_text(row.get("创建时间")),
+            modified=_optional_text(row.get("修改时间")),
         )
     return row_count, products
 
@@ -297,8 +298,8 @@ def _load_combination_products(
                 name=_text(row["组合商品名称"]),
                 cost_price=normalize_decimal(row["组合成本价"], sku_id=sku_id),
                 enabled=_enabled(row["商品状态"], sku_id),
-                created=_optional_text(row["创建时间"]),
-                modified=_optional_text(row["修改时间"]),
+                created=_optional_text(row.get("创建时间")),
+                modified=_optional_text(row.get("修改时间")),
             )
             for _, row in group
         ]
@@ -333,42 +334,36 @@ def _combination_cost_mismatch(
 
 
 def _read_rows(path: Path, required_headers: tuple[str, ...], label: str):
-    workbook = load_workbook(path, read_only=True, data_only=True)
-    try:
-        if len(workbook.sheetnames) != 1:
-            raise ValueError(f"{label}必须且只能包含一个工作表")
-        worksheet = workbook[workbook.sheetnames[0]]
-        worksheet.reset_dimensions()
-        rows = worksheet.iter_rows(values_only=True)
-        try:
-            raw_headers = next(rows)
-        except StopIteration as exc:
-            raise ValueError(f"{label}为空") from exc
-        headers = tuple(_text(value).strip() for value in raw_headers)
-        duplicates = [
-            header for header, count in Counter(headers).items() if header and count > 1
-        ]
-        if duplicates:
-            raise ValueError(f"{label}存在重复列：{', '.join(duplicates)}")
-        missing = [header for header in required_headers if header not in headers]
-        if missing:
-            raise ValueError(f"{label}缺少必填列：{', '.join(missing)}")
-        indexes = {header: headers.index(header) for header in required_headers}
-        materialized = []
-        for source_row, values in enumerate(rows, start=2):
-            if not any(value not in (None, "") for value in values):
-                continue
-            if len(materialized) >= MAX_IMPORT_ROWS:
-                raise ValueError(f"{label}数据行超过 {MAX_IMPORT_ROWS:,} 行安全上限")
-            materialized.append(
-                (
-                    source_row,
-                    {header: values[index] for header, index in indexes.items()},
-                )
-            )
-        return materialized
-    finally:
-        workbook.close()
+    content = path.read_bytes()
+    sheet, header_row = locate_required_headers(content, path.name, required_headers)
+    materialized = []
+    indexes = {}
+    for source_row, cells in iter_source_rows(content, path.name, sheet=sheet):
+        if source_row < header_row:
+            continue
+        if source_row == header_row:
+            if any(cell.formula or cell.error for cell in cells):
+                raise ValueError(f"{label}表头包含公式或 Excel 错误，请修正后重新导入")
+            headers = tuple(header_text(cell) for cell in cells)
+            duplicates = [header for header, count in Counter(headers).items() if header and count > 1]
+            if duplicates:
+                raise ValueError(f"{label}存在重复列：{', '.join(duplicates)}")
+            indexes = {header: headers.index(header) for header in (*required_headers, "创建时间", "修改时间") if header in headers}
+            continue
+        if not any(cell.value not in (None, "") or cell.formula for cell in cells):
+            continue
+        if len(materialized) >= MAX_IMPORT_ROWS:
+            raise ValueError(f"{label}数据行超过 {MAX_IMPORT_ROWS:,} 行安全上限")
+        row = {}
+        for header, index in indexes.items():
+            cell = cells[index] if index < len(cells) else None
+            if cell is not None and cell.error:
+                raise ValueError(f"{label}第 {source_row} 行 {header} 包含 Excel 错误值")
+            if cell is not None and cell.formula and (header in {"商品编码", "组合商品编码"} or cell.value is None):
+                raise ValueError(f"{label}第 {source_row} 行公式不可读取；编码不得使用公式，其他公式需缓存值")
+            row[header] = None if cell is None else cell.value
+        materialized.append((source_row, row))
+    return materialized
 
 
 def _can_combination_fill_missing_cost(

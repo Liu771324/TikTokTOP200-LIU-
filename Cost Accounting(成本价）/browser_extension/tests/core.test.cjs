@@ -582,7 +582,7 @@ test("service failure never exposes stale-looking calculations", () => {
   assert.equal(state.items[0].comparison, undefined);
 });
 
-test("panel copy labels sandbox data as not for pricing", () => {
+test("panel explains missing components and environment without assuming cost source", () => {
   assert.match(panel.CSS_TEXT, /prefers-reduced-motion/);
   assert.match(panel.CSS_TEXT, /left:\s*18px;\s*bottom:\s*18px;/);
   assert.doesNotMatch(panel.CSS_TEXT, /\.ca-panel\s*\{[^}]*top:\s*18px;[^}]*right:\s*18px;/s);
@@ -592,7 +592,7 @@ test("panel copy labels sandbox data as not for pricing", () => {
     rate: "—",
     reason: "同一 SKUID 观察到不同商家编码，已停止自动匹配。"
   });
-  assert.equal(panel.statusPresentation({ status: "invalid_cost" }).reason, "聚水潭成本为负数，无法计算。");
+  assert.equal(panel.statusPresentation({ status: "invalid_cost" }).reason, "商品基础成本为负数，无法计算。");
   assert.deepEqual(
     panel.statusPresentation({
       status: "true_cost_unconfigured",
@@ -620,15 +620,15 @@ test("incomplete true cost keeps each available component visible", () => {
     }),
     [
       ["最低到手", "¥20"],
-      ["聚水潭成本", "¥12"],
-      ["估算运费", "未找到"],
+      ["商品基础成本", "¥12"],
+      ["估算运费（基础规则/未指定地区）", "未找到"],
       ["基础服务费", "¥1"],
       ["基础费率", "0.05"]
     ]
   );
   assert.equal(
     panel.shippingLabel({ shipping_estimated_from_first_weight: true }),
-    "估算运费（按首重估算）"
+    "估算运费（按首重估算；基础规则/未指定地区）"
   );
 });
 

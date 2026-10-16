@@ -1,10 +1,11 @@
 from __future__ import annotations
+from contextlib import nullcontext
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
-from .database import connect_database
+from .database import read_database
 from .service_fee import infer_major_category, match_basic_service_fee_rate
 from .shipping import calculate_shipping_fee, match_product_shipping_template
 
@@ -41,9 +42,16 @@ def estimate_true_cost(
     page_category_levels: tuple[str, str, str, str] | None = None,
     effective_on: str,
     region: str = "",
+    _connection=None,
 ) -> TrueCostEstimate:
+    if _connection is None:
+        with read_database(database_path) as connection:
+            connection.execute("BEGIN")
+            return estimate_true_cost(database_path, douyin_sku_id=douyin_sku_id, lowest_price=lowest_price,
+                                      shipping_template_id=shipping_template_id, page_category_levels=page_category_levels,
+                                      effective_on=effective_on, region=region, _connection=connection)
     price = _positive_decimal(lowest_price, "最低到手价")
-    with connect_database(database_path) as connection:
+    with nullcontext(_connection) as connection:
         row = connection.execute(
             """
             SELECT mappings.jushuitan_sku_id, mappings.shop_name,
@@ -93,7 +101,7 @@ def estimate_true_cost(
     if page_category_levels is not None:
         categories = _page_categories(page_category_levels)
         category_source = "page"
-        inferred_major = infer_major_category(database_path, categories[0])
+        inferred_major = infer_major_category(database_path, categories[0], _connection=_connection)
         if inferred_major is not None:
             major_category = inferred_major
             major_category_reason = ""
@@ -107,6 +115,7 @@ def estimate_true_cost(
         major_category=major_category,
         category_levels=categories,  # type: ignore[arg-type]
         effective_on=effective_on,
+        _connection=_connection,
     )
     product_match = None
     if shipping_template_id is None:
@@ -114,6 +123,7 @@ def estimate_true_cost(
             database_path,
             shop_name=str(row["shop_name"]),
             douyin_product_id=str(row["douyin_product_id"]),
+            _connection=_connection,
         )
         shipping_template_id = product_match.template_id
     product_template_reason = (
@@ -127,6 +137,7 @@ def estimate_true_cost(
             template_id=shipping_template_id,
             weight_kg=row["weight_kg"],
             region=region,
+            _connection=_connection,
         )
     )
     product_cost, product_cost_reason = _product_cost_component(row["cost_price"])
@@ -184,7 +195,7 @@ def estimate_true_cost(
         available=True,
         jushuitan_sku_id=str(row["jushuitan_sku_id"]),
         product_cost=_decimal_text(product_cost),
-        weight_kg=str(row["weight_kg"]),
+        weight_kg=None if row["weight_kg"] is None else str(row["weight_kg"]),
         shipping_fee=shipping.fee,
         shipping_region=shipping.region,
         major_category=major_category,

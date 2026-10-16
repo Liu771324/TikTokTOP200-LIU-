@@ -28,13 +28,13 @@ def verify_outputs(config: AppConfig) -> VerificationResult:
         last_successful_sync = get_sync_state(connection, "last_successful_sync")
         recorded_enabled = get_sync_state(connection, "last_enabled_count")
 
-    if last_mode not in {"full", "incremental"}:
+    if last_mode not in {"full", "incremental", "excel_pair_import", "generic_cost_import"}:
         raise ValueError("SQLite 的 last_mode 无效")
     if not last_successful_sync:
         raise ValueError("SQLite 缺少 last_successful_sync")
     if recorded_enabled != str(enabled_count):
         raise ValueError("SQLite 同步状态中的启用商品数与当前数据不一致")
-    validate_excel(config.excel_path, expected_rows=enabled_count)
+    validate_excel(config.excel_path, expected_rows=enabled_count, expected_database_path=config.database_path)
 
     return VerificationResult(
         total_count=total_count,

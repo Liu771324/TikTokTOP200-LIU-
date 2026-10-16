@@ -79,6 +79,7 @@ const ui = {
   serviceFeeMajorFilter: byId("service-fee-major-filter"),
   serviceFeeSearch: byId("service-fee-search"),
   serviceFeeRateFilter: byId("service-fee-rate-filter"),
+  serviceFeeVersionFilter: byId("service-fee-version-filter"),
   serviceFeeCategories: [1, 2, 3, 4].map((index) => byId(`service-fee-category-${index}`)),
   serviceFeeRate: byId("service-fee-rate"),
   serviceFeeSpecialRate: byId("service-fee-special-rate"),
@@ -117,6 +118,9 @@ const ui = {
   shippingProductList: byId("shipping-product-list"),
   shippingUnboundCount: byId("shipping-unbound-count"),
   shippingBindingProgress: byId("shipping-binding-progress"),
+  shippingPagePrev: byId("shipping-page-prev"),
+  shippingPageNext: byId("shipping-page-next"),
+  shippingPageInfo: byId("shipping-page-info"),
   /* RELEASE_EXCLUDE_END: v2 */
   /* RELEASE_EXCLUDE_START: reviews */
   refreshReviews: byId("refresh-reviews"),
@@ -153,12 +157,19 @@ const state = {
   shippingTemplates: [],
   shippingProducts: [],
   shippingPreview: null,
+  shippingPage: 1,
+  shippingPageCount: 1,
+  shippingBindingRequest: 0,
+  shippingBindingLoading: false,
+  shippingRefreshRequired: false,
+  serviceFeeRefreshRequired: false,
   /* RELEASE_EXCLUDE_END: v2 */
   rollbackRefreshRequired: false,
   toastTimer: null
 };
 
 function count(value) {
+  if (value === null || value === undefined || value === "") return "—";
   const number = Number(value);
   return Number.isFinite(number) ? number.toLocaleString("zh-CN") : "—";
 }
@@ -219,17 +230,24 @@ function syncControls() {
   ui.archiveLegacyServiceFee.disabled = disabled || state.serviceFeeArchivedView;
   ui.toggleServiceFeeArchive.disabled = disabled;
   ui.newServiceFee.disabled = disabled || state.serviceFeeArchivedView;
-  ui.previewServiceFee.disabled = disabled || state.serviceFeeArchivedView;
-  ui.toggleServiceFee.disabled = disabled || state.serviceFeeArchivedView || !state.selectedServiceFeeId;
+  ui.previewServiceFee.disabled = disabled || state.serviceFeeArchivedView || state.serviceFeeRefreshRequired;
+  ui.toggleServiceFee.disabled = disabled || state.serviceFeeArchivedView || !state.selectedServiceFeeId || state.serviceFeeRefreshRequired;
+  ui.importOfficialServiceFee.disabled ||= state.serviceFeeRefreshRequired;
+  ui.archiveLegacyServiceFee.disabled ||= state.serviceFeeRefreshRequired;
   for (const button of ui.serviceFeeList.querySelectorAll("button")) {
     button.disabled = disabled || state.serviceFeeArchivedView;
   }
   ui.refreshShipping.disabled = disabled;
   ui.newShippingTemplate.disabled = disabled;
   ui.addShippingRule.disabled = disabled;
-  ui.previewShipping.disabled = disabled;
+  ui.previewShipping.disabled = disabled || state.shippingRefreshRequired;
   for (const button of ui.shippingTemplateList.querySelectorAll("button")) button.disabled = disabled;
   for (const control of ui.shippingBindingForm.querySelectorAll("button, select, input")) control.disabled = disabled;
+  for (const control of ui.shippingBindingForm.querySelectorAll('button, input[type="checkbox"], #shipping-binding-template')) {
+    control.disabled ||= state.shippingBindingLoading || state.shippingRefreshRequired;
+  }
+  ui.shippingPagePrev.disabled ||= state.shippingPage <= 1;
+  ui.shippingPageNext.disabled ||= state.shippingPage >= state.shippingPageCount;
   /* RELEASE_EXCLUDE_END: v2 */
   /* RELEASE_EXCLUDE_START: reviews */
   ui.refreshReviews.disabled = disabled;
@@ -247,6 +265,7 @@ function syncControls() {
   for (const button of document.querySelectorAll(".history-rollback")) {
     button.disabled = disabled || state.rollbackRefreshRequired;
   }
+  globalThis.CostImportUI?.syncControls();
 }
 
 function selectPage(pageName) {
@@ -270,6 +289,10 @@ function selectPage(pageName) {
   if (pageName === "shipping" && state.bridgeReady) {
     refreshShippingTemplates();
   }
+  if (pageName !== "shipping") {
+    state.shippingBindingRequest += 1;
+    state.shippingBindingLoading = false;
+  }
   /* RELEASE_EXCLUDE_END: v2 */
   /* RELEASE_EXCLUDE_START: reviews */
   if (pageName === "reviews" && state.bridgeReady) {
@@ -280,6 +303,9 @@ function selectPage(pageName) {
 
 function historySummary(entry) {
   if (entry.kind === "catalog") {
+    if (entry.mode === "generic_cost_import") {
+      return `${entry.source?.scope || "当前成本目录"} · ${entry.source?.source_label || "通用来源"} · ${entry.source?.file_name || "成本表"} · ${entry.source?.mode === "replace" ? "全量替换" : "增量更新"} · 启用商品 ${count(entry.enabled_count)}`;
+    }
     return `启用商品 ${count(entry.enabled_count)} · 普通商品 ${count(entry.ordinary_count)} · 组合商品 ${count(entry.combination_count)}`;
   }
   /* RELEASE_EXCLUDE_START: v2 */
@@ -352,6 +378,10 @@ function renderUpdateHistory(entries) {
       rollback.disabled = state.busy || state.rollbackRefreshRequired || !state.bridgeReady;
       rollback.addEventListener("click", () => rollbackUpdate(entry));
       footer.append(rollback);
+    } else if (entry.is_latest && entry.rollback_unavailable_reason) {
+      const reason = document.createElement("small");
+      reason.textContent = entry.rollback_unavailable_reason;
+      footer.append(reason);
     }
 
     content.append(heading, summary, footer);
@@ -496,7 +526,8 @@ function renderServiceFeeDirectory() {
     const path = [version.major_category, ...(version.category_levels || [])].join(" ").toLocaleLowerCase("zh-CN");
     return (!major || version.major_category === major)
       && (!rate || version.rate === rate)
-      && (!query || path.includes(query));
+      && (!query || path.includes(query))
+      && (state.serviceFeeArchivedView || ui.serviceFeeVersionFilter.value === "all" || version.version_status === ui.serviceFeeVersionFilter.value);
   });
   ui.serviceFeeList.replaceChildren();
   ui.serviceFeeEmpty.hidden = visible.length > 0;
@@ -534,11 +565,12 @@ function renderServiceFeeDirectory() {
     const status = document.createElement("em");
     category.textContent = `${version.major_category || "未配置大类"} · ${version.category_levels.join(" › ")}`;
     const coverage = version.product_coverage_count == null
-      ? "覆盖统计中"
-      : `覆盖 ${count(version.product_coverage_count)} 个商品`;
+      ? "类目可覆盖范围统计中"
+      : `类目可覆盖 ${count(version.product_coverage_count)} 个商品（非实际命中数）`;
     detail.textContent = `${version.effective_from} 起 · 基础 ${(Number(version.rate) * 100).toFixed(2).replace(/\.00$/, "")}% · ${coverage}`;
     const source = version.source_article_id ? `官方 ${displayTime(version.source_updated_at)}` : (version.note || "人工版本");
-    status.textContent = `${version.archived ? `已归档 ${displayTime(version.archived_at)}` : (version.enabled ? "已启用" : "已停用")} · ${version.specificity}/4 级具体 · ${source}`;
+    const versionLabel = { current: "该规则当前版本", historical: "历史版本", future: "未来生效" }[version.version_status] || "日期待核对";
+    status.textContent = `${version.archived ? `已归档 ${displayTime(version.archived_at)}` : `${versionLabel} · ${version.enabled ? "启用" : "停用"}`} · ${version.specificity}/4 级具体 · ${source}`;
     button.append(category, detail, status);
     if (!state.serviceFeeArchivedView) {
       button.addEventListener("click", () => fillServiceFeeForm(version));
@@ -572,6 +604,7 @@ async function refreshBasicServiceFees() {
       archived: state.serviceFeeArchivedView
     }));
     directoryLoaded = true;
+    state.serviceFeeRefreshRequired = false;
     ui.activity.textContent = state.serviceFeeArchivedView
       ? "基础服务费归档已刷新"
       : "基础服务费版本已刷新";
@@ -614,6 +647,18 @@ async function loadBasicServiceFeeCoverage(
   }
 }
 
+async function refreshServiceFeesAfterWrite() {
+  try {
+    renderBasicServiceFees(await invoke("get_basic_service_fee_rates"));
+    state.serviceFeeRefreshRequired = false;
+    void loadBasicServiceFeeCoverage();
+    return "";
+  } catch {
+    state.serviceFeeRefreshRequired = true;
+    return "已保存，但目录刷新失败；请刷新费率页核对，勿重复提交。";
+  }
+}
+
 async function toggleServiceFeeArchiveView() {
   if (state.busy || !state.bridgeReady) return;
   state.serviceFeeArchivedView = !state.serviceFeeArchivedView;
@@ -647,14 +692,14 @@ async function archiveLegacyServiceFeeRates() {
     const result = await invoke("apply_legacy_service_fee_archive", {
       preview_id: preview.preview_id
     });
-    renderBasicServiceFees(await invoke("get_basic_service_fee_rates"));
-    void loadBasicServiceFeeCoverage();
+    const refreshWarning = await refreshServiceFeesAfterWrite();
     showResult(
       ui.serviceFeeResult,
-      `已归档 ${count(result.count)} 条旧费率。恢复备份：${result.backup_file}。可在“查看归档”中核对。`
+      `已归档 ${count(result.count)} 条旧费率。恢复备份：${result.backup_file}。可在“查看归档”中核对。${refreshWarning}`
     );
     showToast(`已归档 ${count(result.count)} 条旧费率。`, true);
   } catch (error) {
+    state.serviceFeeRefreshRequired ||= error.resultUncertain === true;
     showToast(error.message);
   } finally {
     setBusy(false);
@@ -676,14 +721,14 @@ async function importOfficialServiceFeeCatalog() {
     if (!accepted) return;
     setBusy(true, "正在备份并导入官方费率目录……");
     const result = await invoke("apply_official_service_fee_catalog", { preview_id: preview.preview_id });
-    renderBasicServiceFees(await invoke("get_basic_service_fee_rates"));
-    void loadBasicServiceFeeCoverage();
+    const refreshWarning = await refreshServiceFeesAfterWrite();
     const message = result.status === "unchanged"
       ? `该官方版本已经导入，共 ${count(result.count)} 条，无需重复写入。`
       : `已导入 ${count(result.count)} 条官方规则。恢复备份：${result.backup_file}。`;
-    showResult(ui.serviceFeeResult, message);
+    showResult(ui.serviceFeeResult, message + refreshWarning);
     showToast(message, true);
   } catch (error) {
+    state.serviceFeeRefreshRequired ||= error.resultUncertain === true;
     showToast(error.message);
   } finally {
     setBusy(false);
@@ -705,7 +750,7 @@ function collectBasicServiceFeeVersion() {
 
 async function saveBasicServiceFeeVersion(event) {
   event.preventDefault();
-  if (state.busy || !state.bridgeReady || !ui.serviceFeeForm.reportValidity()) return;
+  if (state.busy || !state.bridgeReady || state.serviceFeeRefreshRequired || state.serviceFeeArchivedView || !ui.serviceFeeForm.reportValidity()) return;
   setBusy(true, "正在预览基础服务费版本……");
   try {
     const preview = await invoke("preview_basic_service_fee_change", collectBasicServiceFeeVersion());
@@ -721,15 +766,15 @@ async function saveBasicServiceFeeVersion(event) {
     }
     setBusy(true, "正在备份并新增基础服务费版本……");
     const result = await invoke("apply_basic_service_fee_change", { preview_id: preview.preview_id });
-    renderBasicServiceFees(await invoke("get_basic_service_fee_rates"));
-    void loadBasicServiceFeeCoverage();
+    const refreshWarning = await refreshServiceFeesAfterWrite();
     const saved = state.serviceFeeRates.find((item) => Number(item.id) === Number(result.rate_id));
-    if (saved) fillServiceFeeForm(saved);
-    showResult(ui.serviceFeeResult, `基础服务费版本已新增。恢复备份：${result.backup_file}。`);
+    if (saved && !refreshWarning) fillServiceFeeForm(saved);
+    showResult(ui.serviceFeeResult, `基础服务费版本已新增。恢复备份：${result.backup_file}。${refreshWarning}`);
     ui.serviceFeeProgress.textContent = "新增完成；旧版本仍保留。";
     showToast("基础服务费版本已新增。", true);
   } catch (error) {
-    ui.serviceFeeProgress.textContent = "版本没有保存，请按提示修正后重新预览。";
+    state.serviceFeeRefreshRequired ||= error.resultUncertain === true;
+    ui.serviceFeeProgress.textContent = error.resultUncertain ? "保存结果未确认，请核对历史并刷新，勿重复提交。" : `版本未完成保存：${error.message}`;
     showToast(error.message);
   } finally {
     setBusy(false);
@@ -738,7 +783,7 @@ async function saveBasicServiceFeeVersion(event) {
 }
 
 async function toggleBasicServiceFeeVersion() {
-  if (state.busy || !state.bridgeReady || !state.selectedServiceFeeId) return;
+  if (state.busy || !state.bridgeReady || !state.selectedServiceFeeId || state.serviceFeeRefreshRequired) return;
   const selected = state.serviceFeeRates.find((item) => Number(item.id) === state.selectedServiceFeeId);
   if (!selected) return;
   const enabled = !selected.enabled;
@@ -756,13 +801,13 @@ async function toggleBasicServiceFeeVersion() {
     if (!accepted) return;
     setBusy(true, `正在备份并${enabled ? "启用" : "停用"}版本……`);
     const result = await invoke("apply_basic_service_fee_change", { preview_id: preview.preview_id });
-    renderBasicServiceFees(await invoke("get_basic_service_fee_rates"));
-    void loadBasicServiceFeeCoverage();
+    const refreshWarning = await refreshServiceFeesAfterWrite();
     const changed = state.serviceFeeRates.find((item) => Number(item.id) === Number(result.rate_id));
-    if (changed) fillServiceFeeForm(changed);
-    showResult(ui.serviceFeeResult, `版本已${enabled ? "启用" : "停用"}。恢复备份：${result.backup_file}。`);
+    if (changed && !refreshWarning) fillServiceFeeForm(changed);
+    showResult(ui.serviceFeeResult, `版本已${enabled ? "启用" : "停用"}。恢复备份：${result.backup_file}。${refreshWarning}`);
     showToast(`基础服务费版本已${enabled ? "启用" : "停用"}。`, true);
   } catch (error) {
+    state.serviceFeeRefreshRequired ||= error.resultUncertain === true;
     showToast(error.message);
   } finally {
     setBusy(false);
@@ -791,39 +836,31 @@ function shippingRuleRow(rule = {}) {
   remove.type = "button";
   remove.className = "shipping-remove";
   remove.textContent = "移除";
-  remove.addEventListener("click", () => row.remove());
+  remove.addEventListener("click", () => { row.remove(); updateShippingCostPreview(); });
   row.append(
     field("地区", "shipping-rule-region", rule.region, "例如：北京市"),
-    field("首费 / 元", "shipping-rule-first-fee", rule.first_fee ?? "0", "0"),
-    field("续费 / 元", "shipping-rule-additional-fee", rule.additional_fee ?? "0", "0"),
+    field("首费 / 元", "shipping-rule-first-fee", rule.first_fee ?? "", "必填，可明确填 0"),
+    field("续费 / 元", "shipping-rule-additional-fee", rule.additional_fee ?? "", "必填，可明确填 0"),
     remove
   );
   return row;
 }
 
+let shippingTrialRequest = 0;
+let shippingTrialTimer = null;
 function updateShippingCostPreview() {
-  const weight = Number(ui.shippingPreviewWeight.value);
-  const firstWeight = Number(ui.shippingFirstWeight.value);
-  const additionalWeight = Number(ui.shippingAdditionalWeight.value);
-  const region = ui.shippingPreviewRegion.value.trim();
-  const rule = Array.from(ui.shippingRuleList.querySelectorAll(".shipping-rule")).find(
-    (row) => row.querySelector(".shipping-rule-region").value.trim() === region && region
-  );
-  const firstFee = Number(rule
-    ? rule.querySelector(".shipping-rule-first-fee").value
-    : ui.shippingFirstFee.value);
-  const additionalFee = Number(rule
-    ? rule.querySelector(".shipping-rule-additional-fee").value
-    : ui.shippingAdditionalFee.value);
-  if (![weight, firstWeight, additionalWeight, firstFee, additionalFee].every(Number.isFinite)
-      || weight <= 0 || firstWeight <= 0 || additionalWeight <= 0
-      || firstFee < 0 || additionalFee < 0) {
-    ui.shippingPreviewCost.textContent = "填写有效重量和价格后显示试算";
-    return;
-  }
-  const steps = weight > firstWeight ? Math.ceil((weight - firstWeight) / additionalWeight) : 0;
-  const fee = firstFee + steps * additionalFee;
-  ui.shippingPreviewCost.textContent = `预计内部运费 ${fee.toFixed(2).replace(/\.00$/, "")} 元 · ${rule ? `${region}特殊价格` : "基础规则"}`;
+  const request = ++shippingTrialRequest;
+  window.clearTimeout(shippingTrialTimer);
+  ui.shippingPreviewCost.textContent = "正在核对草稿并试算……";
+  shippingTrialTimer = window.setTimeout(async () => {
+    try {
+      const result = await invoke("trial_shipping_fee", { template: collectShippingTemplate(), weight_kg: ui.shippingPreviewWeight.value.trim() || null, region: ui.shippingPreviewRegion.value.trim() });
+      if (request !== shippingTrialRequest) return;
+      ui.shippingPreviewCost.textContent = result.unconfigured_reason || `估算内部运费 ${result.fee} 元 · ${result.rule_type === "region" ? `${result.region}特殊规则` : "基础规则"} · 续重 ${result.additional_steps} 档${result.estimated_from_first_weight ? " · 按模板首重估算" : ""}`;
+    } catch (error) {
+      if (request === shippingTrialRequest) ui.shippingPreviewCost.textContent = `暂不能试算：${error.message}`;
+    }
+  }, 220);
 }
 
 function fillShippingForm(template = null) {
@@ -902,7 +939,7 @@ function renderShippingProductChoices() {
     const detail = document.createElement("small");
     title.textContent = product.product_name || product.douyin_product_id;
     const template = state.shippingTemplates.find((item) => Number(item.id) === Number(product.template_id));
-    detail.textContent = `${product.douyin_product_id} · ${count(product.sku_count)} 个 SKU · ${template ? `当前：${template.name}` : "未绑定"}`;
+    detail.textContent = `${product.douyin_product_id} · ${count(product.sku_count)} 个 SKU · ${template ? `当前：${template.name}${template.enabled ? "" : "（已停用，不可计算）"}` : product.template_id ? "已绑定但模板不可用" : "未绑定"}`;
     content.append(title, detail);
     label.append(checkbox, content);
     ui.shippingProductList.append(label);
@@ -911,24 +948,64 @@ function renderShippingProductChoices() {
 
 function renderShippingBindings(payload) {
   state.shippingProducts = Array.isArray(payload?.products) ? payload.products : [];
-  ui.shippingUnboundCount.textContent = `${count(payload?.unbound_count)} 个商品未绑定`;
+  state.shippingPage = payload?.page || 1;
+  state.shippingPageCount = payload?.page_count || 1;
+  ui.shippingPageInfo.textContent = `筛选结果 ${count(payload?.filtered_count)} 个 · 第 ${state.shippingPage}/${state.shippingPageCount} 页；翻页/筛选清空勾选`;
+  ui.shippingUnboundCount.textContent = `全部店铺：${count(payload?.unbound_count)} 个未绑定，${count(payload?.unavailable_count)} 个已绑定但不可用`;
   const selectedShop = ui.shippingBindingShop.value;
   const selectedTemplate = ui.shippingBindingTemplate.value;
-  const shops = [...new Set(state.shippingProducts.map((item) => item.shop_name).filter(Boolean))].sort();
+  const shops = Array.isArray(payload?.shops) ? payload.shops : [...new Set(state.shippingProducts.map((item) => item.shop_name).filter(Boolean))].sort();
   ui.shippingBindingShop.replaceChildren(...shops.map((value) => new Option(value, value)));
   ui.shippingBindingTemplate.replaceChildren(
     ...state.shippingTemplates.filter((item) => item.enabled).map((item) => new Option(`${item.name} · ${count(item.product_count)} 个商品`, String(item.id)))
   );
-  if (shops.includes(selectedShop)) ui.shippingBindingShop.value = selectedShop;
+  if (shops.includes(payload?.shop_name || selectedShop)) ui.shippingBindingShop.value = payload?.shop_name || selectedShop;
   if (state.shippingTemplates.some((item) => String(item.id) === selectedTemplate && item.enabled)) {
     ui.shippingBindingTemplate.value = selectedTemplate;
   }
   renderShippingProductChoices();
 }
 
+async function loadShippingBindings(page = 1) {
+  if (!state.bridgeReady || state.busy || byId("page-shipping").hidden) {
+    state.shippingBindingLoading = false;
+    syncControls();
+    return;
+  }
+  const request = ++state.shippingBindingRequest;
+  state.shippingBindingLoading = true;
+  ui.shippingProductList.replaceChildren();
+  ui.shippingBindingProgress.textContent = "正在读取这一页商品……";
+  syncControls();
+  try {
+    const payload = await invoke("get_shipping_product_bindings", { shop_name: ui.shippingBindingShop.value, status: ui.shippingBindingStatus.value, query: ui.shippingBindingSearch.value, page });
+    if (request !== state.shippingBindingRequest) return;
+    renderShippingBindings(payload);
+    ui.shippingBindingProgress.textContent = "选择范围仅为当前页；先核对目标模板，再预览绑定。";
+  } catch (error) {
+    if (request === state.shippingBindingRequest) ui.shippingBindingProgress.textContent = `商品读取失败，可重新筛选或刷新：${error.message}`;
+  } finally {
+    if (request === state.shippingBindingRequest) { state.shippingBindingLoading = false; syncControls(); }
+  }
+}
+
+async function refreshShippingAfterWrite() {
+  state.shippingBindingRequest += 1;
+  state.shippingBindingLoading = false;
+  try {
+    renderShippingTemplates(await invoke("get_shipping_templates"));
+    renderShippingBindings(await invoke("get_shipping_product_bindings", { shop_name: ui.shippingBindingShop.value, status: ui.shippingBindingStatus.value, query: ui.shippingBindingSearch.value, page: state.shippingPage }));
+    state.shippingRefreshRequired = false;
+    return "";
+  } catch {
+    state.shippingRefreshRequired = true;
+    return "已保存，但界面刷新未完成；请刷新运费页核对，勿重复提交。";
+  }
+}
+
 async function saveShippingProductBindings(event) {
   event.preventDefault();
-  if (state.busy || !state.bridgeReady || !ui.shippingBindingForm.reportValidity()) return;
+  if (state.busy || !state.bridgeReady || state.shippingBindingLoading || state.shippingRefreshRequired || !ui.shippingBindingForm.reportValidity()) return;
   const productIds = Array.from(
     ui.shippingProductList.querySelectorAll('input[type="checkbox"]:checked'),
     (input) => input.value
@@ -948,18 +1025,18 @@ async function saveShippingProductBindings(event) {
     setBusy(false, "商品绑定预览完成，等待确认");
     const accepted = await confirmAction(
       "确认绑定商品运费模板",
-      `${preview.shop_name}\n${count(preview.douyin_product_ids.length)} 个商品将统一使用“${template?.name || preview.template_id}”。同一商品下全部 SKU 共用该模板。确认后会先创建恢复备份。`,
+      `${preview.shop_name}\n${count(preview.douyin_product_ids.length)} 个商品将统一使用“${template?.name || preview.template_id}”。同商品全部 SKU 共用。\n${(preview.changes || []).slice(0, 20).map((item) => `${item.product_id}：${item.before || "未绑定"} → ${item.after}`).join("\n")}\n以上最多列出 20 个商品；确认后先备份。`,
       "确认绑定"
     );
     if (!accepted) return;
     setBusy(true, "正在备份并绑定商品……");
     const result = await invoke("apply_shipping_product_bindings", { preview_id: preview.preview_id });
-    renderShippingTemplates(await invoke("get_shipping_templates"));
-    renderShippingBindings(await invoke("get_shipping_product_bindings"));
-    ui.shippingBindingProgress.textContent = `已绑定 ${count(result.product_count)} 个商品；恢复备份：${result.backup_file}。`;
+    const warning = await refreshShippingAfterWrite();
+    ui.shippingBindingProgress.textContent = `已绑定 ${count(result.product_count)} 个商品；恢复备份：${result.backup_file}。${warning}`;
     showToast("商品运费模板绑定完成。", true);
   } catch (error) {
-    ui.shippingBindingProgress.textContent = "商品没有绑定，请按提示修正后重试。";
+    state.shippingRefreshRequired ||= error.resultUncertain === true;
+    ui.shippingBindingProgress.textContent = error.resultUncertain ? "绑定结果未确认，请先核对更新历史并刷新；不要重复提交。" : `绑定未完成：${error.message}`;
     showToast(error.message);
   } finally {
     setBusy(false);
@@ -971,7 +1048,7 @@ async function refreshShippingTemplates() {
   setBusy(true, "正在读取运费模板……");
   try {
     renderShippingTemplates(await invoke("get_shipping_templates"));
-    renderShippingBindings(await invoke("get_shipping_product_bindings"));
+    state.shippingRefreshRequired = false;
     ui.activity.textContent = "运费模板已刷新";
   } catch (error) {
     ui.shippingTemplateList.replaceChildren();
@@ -981,6 +1058,7 @@ async function refreshShippingTemplates() {
   } finally {
     setBusy(false);
   }
+  await loadShippingBindings();
 }
 
 function collectShippingTemplate() {
@@ -1007,14 +1085,14 @@ function collectShippingTemplate() {
 
 async function saveShippingTemplate(event) {
   event.preventDefault();
-  if (state.busy || !state.bridgeReady || !ui.shippingForm.reportValidity()) return;
+  if (state.busy || !state.bridgeReady || state.shippingRefreshRequired || !ui.shippingForm.reportValidity()) return;
   setBusy(true, "正在预览运费模板……");
   try {
     const preview = await invoke("preview_shipping_template", collectShippingTemplate());
     setBusy(false, "运费模板预览完成，等待确认");
     const accepted = await confirmAction(
       preview.mode === "create" ? "确认新建运费模板" : "确认修改运费模板",
-      `${preview.name}\n首重 ${preview.first_weight} kg / ${preview.first_fee} 元；每续重 ${preview.additional_weight} kg / ${preview.additional_fee} 元。\n特殊地区：${count(preview.region_rules.length)} 条。确认后会先创建恢复备份。`,
+      `${preview.name} · ${preview.enabled ? "启用" : "停用"}\n${preview.impact?.before ? `原规则：首重 ${preview.impact.before.first_weight} kg / ${preview.impact.before.first_fee} 元；续重 ${preview.impact.before.additional_weight} kg / ${preview.impact.before.additional_fee} 元；${preview.impact.before.enabled ? "启用" : "停用"}\n` : ""}新规则：首重 ${preview.first_weight} kg / ${preview.first_fee} 元；续重 ${preview.additional_weight} kg / ${preview.additional_fee} 元。\n影响 ${count(preview.impact?.affected_shops)} 家店、${count(preview.impact?.affected_products)} 个引用商品、${count(preview.impact?.affected_skus)} 个 SKU。\n${(preview.impact?.region_changes || []).map((item) => `${item.region}：${item.before ? `${item.before.first_fee}/${item.before.additional_fee} 元` : "无特殊规则"} → ${item.after ? `${item.after.first_fee}/${item.after.additional_fee} 元` : "删除，改用基础规则"}`).join("\n")}\n保存规则后仍需在下方分配商品；确认先备份。`,
       preview.mode === "create" ? "确认新建" : "确认修改"
     );
     if (!accepted) {
@@ -1024,14 +1102,15 @@ async function saveShippingTemplate(event) {
     setBusy(true, "正在备份并保存运费模板……");
     ui.activity.textContent = "正在备份并保存运费模板……";
     const result = await invoke("apply_shipping_template", { preview_id: preview.preview_id });
-    renderShippingTemplates(await invoke("get_shipping_templates"));
+    const warning = await refreshShippingAfterWrite();
     const saved = state.shippingTemplates.find((item) => Number(item.id) === Number(result.template_id));
     if (saved) fillShippingForm(saved);
-    showResult(ui.shippingResult, `运费模板已${result.mode === "create" ? "新建" : "修改"}。恢复备份：${result.backup_file}。`);
+    showResult(ui.shippingResult, `运费模板已${result.mode === "create" ? "新建" : "修改"}。恢复备份：${result.backup_file}。${warning}`);
     ui.shippingProgress.textContent = "保存完成；再次修改前会重新预览。";
     showToast("运费模板已保存。", true);
   } catch (error) {
-    ui.shippingProgress.textContent = "模板没有保存，请按提示修正后重新预览。";
+    state.shippingRefreshRequired ||= error.resultUncertain === true;
+    ui.shippingProgress.textContent = error.resultUncertain ? "保存结果未确认，请核对更新历史并刷新；勿重复提交。" : `模板未完成保存：${error.message}`;
     showToast(error.message);
   } finally {
     setBusy(false);
@@ -1139,20 +1218,24 @@ async function refreshMappingReviews() {
 
 function renderState(snapshot) {
   const health = snapshot?.health;
-  state.serviceExpected = snapshot?.expected === true;
+  state.serviceExpected = snapshot?.expected === true && health?.ready !== false;
   state.ownsService = snapshot?.owns_service === true;
   const serviceMode = refreshModel.serviceMode(snapshot);
   ui.servicePill.className = "service-pill";
   if (serviceMode === "running") {
     ui.servicePill.classList.add("ready");
     ui.serviceStatus.textContent = "成本服务已就绪";
-    const environment = health.environment === "test" ? "测试数据" : "正式数据";
+    if (health.ready === false) {
+      ui.servicePill.className = "service-pill attention";
+      ui.serviceStatus.textContent = health.status === "recovering" ? "资料发布中或等待恢复" : "成本数据库暂不可用";
+    }
+    const environment = health.environment === "test" ? "测试环境标记" : "正式环境标记";
     const ownership = state.ownsService ? "本窗口管理" : "已接管现有实例";
     ui.serviceDetail.textContent = `${environment} · ${ownership} · 127.0.0.1:${snapshot.port} · 数据库：${snapshot.database_path}`;
     ui.environment.textContent = environment;
-    ui.products.textContent = count(health.enabled_count);
-    ui.mappings.textContent = count(health.verified_mapping_count);
-    ui.updated.textContent = displayTime(health.last_successful_sync);
+    ui.products.textContent = health.statistics_stale ? "待刷新" : count(health.enabled_count);
+    ui.mappings.textContent = health.statistics_stale ? "待刷新" : count(health.verified_mapping_count);
+    ui.updated.textContent = health.statistics_stale ? "统计待刷新" : displayTime(health.last_successful_sync);
     ui.knownShops.replaceChildren();
     for (const shop of Array.isArray(health.mapping_shops) ? health.mapping_shops : []) {
       if (typeof shop !== "string" || !shop.trim()) continue;
@@ -1412,17 +1495,28 @@ ui.toggleServiceFeeArchive.addEventListener("click", toggleServiceFeeArchiveView
 ui.newServiceFee.addEventListener("click", () => fillServiceFeeForm());
 ui.serviceFeeMajorFilter.addEventListener("change", renderServiceFeeDirectory);
 ui.serviceFeeRateFilter.addEventListener("change", renderServiceFeeDirectory);
+ui.serviceFeeVersionFilter.addEventListener("change", renderServiceFeeDirectory);
 ui.serviceFeeSearch.addEventListener("input", renderServiceFeeDirectory);
 ui.serviceFeeForm.addEventListener("submit", saveBasicServiceFeeVersion);
 ui.toggleServiceFee.addEventListener("click", toggleBasicServiceFeeVersion);
 ui.refreshShipping.addEventListener("click", refreshShippingTemplates);
 ui.newShippingTemplate.addEventListener("click", () => fillShippingForm());
-ui.addShippingRule.addEventListener("click", () => ui.shippingRuleList.append(shippingRuleRow()));
+ui.addShippingRule.addEventListener("click", () => { ui.shippingRuleList.append(shippingRuleRow()); updateShippingCostPreview(); });
 ui.shippingForm.addEventListener("submit", saveShippingTemplate);
 ui.shippingForm.addEventListener("input", updateShippingCostPreview);
-ui.shippingBindingShop.addEventListener("change", renderShippingProductChoices);
-ui.shippingBindingStatus.addEventListener("change", renderShippingProductChoices);
-ui.shippingBindingSearch.addEventListener("input", renderShippingProductChoices);
+ui.shippingBindingShop.addEventListener("change", () => loadShippingBindings());
+ui.shippingBindingStatus.addEventListener("change", () => loadShippingBindings());
+let shippingSearchTimer = null;
+ui.shippingBindingSearch.addEventListener("input", () => {
+  state.shippingBindingRequest += 1;
+  ui.shippingProductList.replaceChildren();
+  window.clearTimeout(shippingSearchTimer);
+  shippingSearchTimer = window.setTimeout(() => loadShippingBindings(), 250);
+});
+ui.shippingPagePrev.addEventListener("click", () => loadShippingBindings(state.shippingPage - 1));
+ui.shippingPageNext.addEventListener("click", () => loadShippingBindings(state.shippingPage + 1));
+byId("shipping-select-page").addEventListener("click", () => { for (const input of ui.shippingProductList.querySelectorAll('input[type="checkbox"]')) input.checked = true; });
+byId("shipping-clear-page").addEventListener("click", () => { for (const input of ui.shippingProductList.querySelectorAll('input[type="checkbox"]')) input.checked = false; });
 ui.shippingBindingForm.addEventListener("submit", saveShippingProductBindings);
 /* RELEASE_EXCLUDE_END: v2 */
 /* RELEASE_EXCLUDE_START: reviews */
@@ -1455,6 +1549,7 @@ ui.applyCatalog.addEventListener("click", async () => {
     "系统会重新核对本次预览的两份文件，先创建一致性备份，再以一个事务和原子发布完成更新。",
     "确认原子更新"
   )) return;
+  state.catalogPreview = null;
   await runAction(
     "正在备份并原子更新成本库……",
     () => invoke("apply_catalog", { preview_id: previewId }),
@@ -1487,6 +1582,7 @@ ui.applyMapping.addEventListener("click", async () => {
     "其他店铺不会改动；系统会复核店铺名称、文件哈希和预览凭证，并先创建 SQLite 一致性备份。",
     "确认替换该店"
   )) return;
+  state.mappingPreview = null;
   await runAction(
     "正在备份并替换该店映射……",
     () => invoke("apply_mapping", { preview_id: previewId }),
@@ -1509,6 +1605,7 @@ ui.saveMappingReviews.addEventListener("click", async () => {
     `将保存本次预览中的 ${count(reviewCount)} 条待核验或跨店冲突，不会改动现有商品映射。保存前会创建恢复备份。`,
     "只保存待处理项"
   )) return;
+  state.mappingPreview = null;
   await runAction(
     "正在保存待处理映射……",
     () => invoke("save_mapping_reviews", { preview_id: previewId }),
@@ -1526,3 +1623,186 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) refreshLoop.trigger();
 });
 syncControls();
+
+// Independent cost-source wizard. File bytes and confirmation state live in Python.
+(() => {
+  const form = byId("cost-form");
+  if (!form) return;
+  const field = (name) => byId(`cost-${name}`);
+  const roles = ["sku", "cost", "name", "status"];
+  let file = null;
+  let loaded = false;
+  let layout = null;
+  let preview = null;
+
+  function syncCostControls() {
+    const disabled = state.busy || !state.bridgeReady || !state.serviceExpected;
+    for (const control of form.querySelectorAll("input, select, button")) control.disabled = disabled;
+    field("choose").disabled = disabled;
+    field("read").disabled = disabled || !file;
+    field("sheet").disabled = disabled || !layout;
+    for (const name of ["header", "encoding", "delimiter"]) field(name).disabled = disabled || !file;
+    field("apply").disabled = disabled || !preview?.ready_to_import;
+    field("preview").disabled = disabled || !loaded;
+  }
+
+  globalThis.CostImportUI = { syncControls: syncCostControls };
+
+  function invalidate() {
+    preview = null;
+    field("preview-card").hidden = true;
+    syncCostControls();
+  }
+
+  function sourceOptions() {
+    return {
+      sheet: field("sheet").value || undefined,
+      header_row: Number(field("header").value),
+      encoding: field("encoding").value,
+      delimiter: field("delimiter").value === "tab" ? "\t" : field("delimiter").value || undefined
+    };
+  }
+
+  function populateLayout(result) {
+    layout = result;
+    field("sheet").replaceChildren(...result.sheets.map((name) => new Option(name, name)));
+    field("sheet").value = result.sheet;
+    field("header").value = result.header_row;
+    for (const role of roles) {
+      const selector = field(`map-${role}`);
+      selector.replaceChildren(new Option(role === "name" || role === "status" ? "不提供：保留已有值" : "请选择来源列", ""));
+      result.headers.forEach((header, index) => selector.add(new Option(`第 ${index + 1} 列 · ${header || "空表头"}`, String(index))));
+      selector.value = result.proposed_mapping[role] == null ? "" : String(result.proposed_mapping[role]);
+    }
+    field("profile").replaceChildren(new Option("手动对应 / 自动候选", ""));
+    result.profiles.forEach((profile, index) => field("profile").add(new Option(String(profile.name || "未命名模板"), String(index))));
+    field("scope").value = result.scope;
+    const table = document.createElement("table");
+    const body = document.createElement("tbody");
+    for (const row of result.sample) {
+      const tr = document.createElement("tr");
+      const number = document.createElement("th");
+      number.textContent = `第 ${row.row} 行${row.row === result.header_row ? "（表头）" : ""}`;
+      tr.append(number);
+      for (const value of row.values) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.append(td);
+      }
+      body.append(tr);
+    }
+    table.append(body);
+    field("source-preview").replaceChildren(table);
+    field("source-preview").hidden = false;
+    form.hidden = false;
+  }
+
+  async function readStructure(newFile = false) {
+    if (!file || state.busy) return;
+    invalidate();
+    const options = sourceOptions();
+    if (newFile) { delete options.sheet; delete options.header_row; }
+    setBusy(true, "正在读取成本表结构……");
+    try {
+      const result = await invoke("inspect_cost_source", { path: loaded ? undefined : file.path, options });
+      loaded = true;
+      populateLayout(result);
+      showResult(field("result"), "已读取文件快照。请核对工作表、表头行和字段，歧义字段需要手动选择。");
+    } catch (error) {
+      loaded = false;
+      showResult(field("result"), `结构读取失败：${error.message}`, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  field("choose").addEventListener("click", async () => {
+    if (state.busy) return;
+    try {
+      const selected = await invoke("choose_file", { kind: "cost" });
+      if (!selected) return;
+      file = selected;
+      loaded = false;
+      layout = null;
+      form.hidden = true;
+      field("source-preview").hidden = true;
+      field("file-name").textContent = selected.name;
+      field("source-label").value = selected.name;
+      field("same-catalog").checked = false;
+      field("basis").checked = false;
+      field("full").checked = false;
+      await readStructure(true);
+    } catch (error) { showToast(error.message); }
+  });
+  field("read").addEventListener("click", () => readStructure());
+  for (const name of ["sheet", "header", "encoding", "delimiter"]) {
+    field(name).addEventListener("input", () => { invalidate(); loaded = false; });
+  }
+  // A changed layout must be read before the previous column choices can be used.
+  form.addEventListener("input", invalidate);
+  field("mode").addEventListener("change", () => {
+    field("full-row").hidden = field("mode").value !== "replace";
+    field("full").required = field("mode").value === "replace";
+    field("full").checked = false;
+    invalidate();
+  });
+  field("profile").addEventListener("change", () => {
+    const profile = layout?.profiles[Number(field("profile").value)];
+    if (!profile || field("profile").value === "") return;
+    const missing = [];
+    for (const role of roles) {
+      const header = profile.mapping_headers[role];
+      const matches = layout.headers.map((name, index) => name === header ? index : -1).filter((index) => index >= 0);
+      field(`map-${role}`).value = header == null || matches.length !== 1 ? "" : String(matches[0]);
+      if (header != null && matches.length !== 1) missing.push(header);
+    }
+    invalidate();
+    showResult(field("result"), missing.length ? `模板字段不再唯一匹配，请手动核对：${missing.join("、")}` : "已按列名重新定位模板字段，请核对后预览。");
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!loaded || state.busy) return;
+    invalidate();
+    const options = {
+      ...sourceOptions(), mapping: Object.fromEntries(roles.map((role) => [role, field(`map-${role}`).value === "" ? null : Number(field(`map-${role}`).value)])),
+      scope: field("scope").value, source_label: field("source-label").value,
+      mode: field("mode").value, number_format: field("number-format").value,
+      last_row: field("last-row").value === "" ? null : Number(field("last-row").value),
+      same_catalog: field("same-catalog").checked, confirmed_basis: field("basis").checked,
+      complete_snapshot: field("full").checked, allow_cached_formulas: field("formulas").checked,
+      profile_name: field("profile-name").value
+    };
+    setBusy(true, "正在逐行检查成本和目录变化……");
+    try {
+      preview = await invoke("preview_cost_import", options);
+      field("preview-card").hidden = false;
+      field("preview-detail").textContent = [
+        `来源：${preview.manifest.source_label} · 文件：${preview.manifest.file_name}`,
+        `工作表：${preview.manifest.sheet} · 表头：第 ${preview.manifest.header_row} 行 · ${preview.manifest.mode === "merge" ? "增量更新" : "全量替换"}`,
+        `读取 ${count(preview.total_rows)} 行；新增 ${count(preview.added)}，修改 ${count(preview.changed)}，移除 ${count(preview.removed)}。`,
+        `更新后商品 ${count(preview.result_count)} 个；本次空成本 ${count(preview.empty_cost)} 个；受移除影响的映射 ${count(preview.affected_mappings)} 条。`,
+        preview.removed_sample.length ? `移除示例：${preview.removed_sample.join("、")}` : "",
+        ...(preview.errors || []), preview.ready_to_import ? "校验通过，可以确认更新。" : "已阻止写入。以上最多列出前 20 个错误，请修正后重新预览。"
+      ].filter(Boolean).join("\n");
+    } catch (error) { showResult(field("result"), `预览失败：${error.message}`, true); }
+    finally { setBusy(false); }
+  });
+  field("apply").addEventListener("click", async () => {
+    if (!preview?.ready_to_import || state.busy) return;
+    const resultPreview = preview;
+    if (!await confirmAction("确认更新生效成本目录", `新增 ${count(preview.added)}，修改 ${count(preview.changed)}，移除 ${count(preview.removed)}。空成本 ${count(preview.empty_cost)} 个，移除涉及 ${count(preview.affected_mappings)} 条映射。确认使用预览快照，先备份再发布。`, "确认更新")) return;
+    if (preview !== resultPreview || state.busy) return;
+    preview = null;
+    setBusy(true, "正在备份并发布成本目录……");
+    try {
+      const result = await invoke("apply_cost_import", { preview_id: resultPreview.preview_id });
+      let refreshWarning = "";
+      try { renderState(await invoke("get_state", { force_log: true })); }
+      catch { refreshWarning = "更新已完成，界面刷新暂未完成，请查看运行概览。"; }
+      showResult(field("result"), `成本更新完成：${count(result.total_count)} 个商品。备份：${result.backup_file}。${result.warning || ""}${refreshWarning}`);
+    } catch (error) {
+      showResult(field("result"), error.resultUncertain ? "更新结果尚未确认，请先查看更新历史和日志；不要重复确认。" : `成本未完成更新：${error.message}`, true);
+    } finally { setBusy(false); }
+  });
+  syncCostControls();
+})();
