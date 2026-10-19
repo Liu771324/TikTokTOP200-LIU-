@@ -921,10 +921,18 @@ function renderShippingProductChoices() {
   if (!products.length) {
     const empty = document.createElement("p");
     empty.className = "shipping-empty";
-    const shopProducts = state.shippingProducts.filter((item) => item.shop_name === shop);
-    empty.textContent = shopProducts.length
-      ? "没有符合当前状态和搜索条件的商品。"
-      : "该店铺还没有已验证的抖店商品映射。";
+    const status = ui.shippingBindingStatus.value;
+    empty.textContent = !shop
+      ? "暂无可用店铺，请先导入已验证的抖店商品映射。"
+      : ui.shippingBindingSearch.value.trim()
+        ? "没有匹配当前搜索和绑定状态的商品，请调整条件后重试。"
+        : status === "unbound"
+          ? "该店铺没有未绑定的商品，可切换到“全部商品”查看已有绑定。"
+          : status === "bound"
+            ? "该店铺没有已绑定的商品，可切换到“仅未绑定”分配模板。"
+            : status === "unavailable"
+              ? "该店铺没有绑定模板不可用的商品。"
+              : "该店铺暂无可显示的已验证商品映射。";
     ui.shippingProductList.append(empty);
     return;
   }

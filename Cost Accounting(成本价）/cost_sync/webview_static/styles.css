@@ -220,14 +220,17 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--focus); out
 .service-fee-actions p { margin: 0; color: var(--muted); line-height: 1.6; }
 
 .shipping-workbench { display: grid; grid-template-columns: minmax(220px, .34fr) minmax(0, 1fr); gap: 18px; align-items: start; }
-.shipping-library, .shipping-form, .shipping-binding-panel { border: 1px solid var(--line); border-radius: 11px; background: var(--surface); box-shadow: var(--shadow); }
+.shipping-library, .shipping-form, .shipping-binding-panel { min-width: 0; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); box-shadow: var(--shadow); }
 .shipping-library { position: sticky; top: 122px; overflow: hidden; }
 .shipping-library-head, .shipping-form-head, .shipping-rules-head, .shipping-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.shipping-form-head, .shipping-rules-head { flex-wrap: wrap; }
+.shipping-form-head > div, .shipping-rules-head > div { flex: 1 1 220px; min-width: 0; }
+.shipping-rules-head > .button, .shipping-actions > .button { flex-shrink: 0; }
 .shipping-library-head { padding: 18px; border-bottom: 1px solid var(--line); background: var(--surface-soft); }
 .shipping-library h3, .shipping-form h3, .shipping-form h4 { margin: 0; }
 .text-button { padding: 4px; border: 0; background: transparent; color: var(--teal-dark); cursor: pointer; font-weight: 800; }
 .shipping-template-list { display: grid; gap: 1px; background: var(--line); }
-.shipping-template { width: 100%; padding: 15px 17px; border: 0; background: var(--surface); text-align: left; cursor: pointer; }
+.shipping-template { min-width: 0; width: 100%; padding: 15px 17px; border: 0; background: var(--surface); text-align: left; overflow-wrap: anywhere; cursor: pointer; }
 .shipping-template:hover, .shipping-template.active { background: var(--teal-soft); }
 .shipping-template.active { box-shadow: inset 4px 0 0 var(--teal); }
 .shipping-template strong, .shipping-template span { display: block; }
@@ -256,10 +259,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--focus); out
 .shipping-track-arrow span { z-index: 1; align-self: start; margin-top: 17px; padding: 3px 6px; background: var(--surface); color: var(--muted); font-size: 9px; font-weight: 800; }
 .shipping-track-arrow b { z-index: 1; padding: 2px 5px; background: var(--surface); font-size: 20px; }
 .shipping-formula { margin: 9px 0 22px; color: var(--muted); font: 600 11px/1.5 Consolas, "Microsoft YaHei UI", monospace; text-align: center; }
-.shipping-cost-preview { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(180px, 1fr) minmax(190px, 1fr); gap: 10px; align-items: end; margin: -7px 0 20px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--teal-soft); }
-.shipping-cost-preview label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
-.shipping-cost-preview input { min-height: 38px; padding: 0 10px; border: 1px solid #9eb1ab; border-radius: 7px; background: var(--surface); color: var(--ink); }
-.shipping-cost-preview output { align-self: stretch; display: grid; place-items: center; padding: 8px 12px; border-radius: 7px; background: var(--teal); color: white; font-weight: 800; text-align: center; }
+.shipping-cost-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 10px; align-items: end; margin: -7px 0 20px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--teal-soft); }
+.shipping-cost-preview label { display: grid; min-width: 0; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.shipping-cost-preview input { width: 100%; min-width: 0; min-height: 38px; padding: 0 10px; border: 1px solid #9eb1ab; border-radius: 7px; background: var(--surface); color: var(--ink); }
+.shipping-cost-preview output { min-width: 0; align-self: stretch; display: grid; place-items: center; padding: 8px 12px; border-radius: 7px; background: var(--teal); color: white; overflow-wrap: anywhere; font-weight: 800; text-align: center; }
 .shipping-rules-head { padding-top: 18px; border-top: 1px solid var(--line); }
 .shipping-rules-head p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
 .shipping-rule-list { display: grid; gap: 9px; margin-top: 13px; }
@@ -271,11 +274,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--focus); out
 .shipping-binding-panel { margin-top: 18px; padding: 21px; }
 .shipping-binding-panel h3 { margin: 0; }
 .shipping-binding-panel > .shipping-form-head > strong { color: var(--amber); font-size: 12px; }
-.shipping-binding-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.shipping-binding-controls label { display: grid; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
-.shipping-binding-controls select, .shipping-binding-controls input { min-height: 42px; padding: 0 11px; border: 1px solid #9eb1ab; border-radius: 7px; background: var(--surface-soft); color: var(--ink); }
+.shipping-binding-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; }
+.shipping-binding-controls label { display: grid; min-width: 0; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.shipping-binding-controls select, .shipping-binding-controls input { width: 100%; min-width: 0; max-width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid #9eb1ab; border-radius: 7px; background: var(--surface-soft); color: var(--ink); text-overflow: ellipsis; }
+.shipping-pagination { align-items: center; margin-top: 16px; }
+.shipping-pagination > span { flex: 1 1 240px; min-width: 0; line-height: 1.6; overflow-wrap: anywhere; }
 .shipping-product-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 340px; margin-top: 14px; overflow: auto; }
-.shipping-product { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); cursor: pointer; }
+.shipping-product { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); overflow-wrap: anywhere; cursor: pointer; }
+.shipping-product-list > .shipping-empty { grid-column: 1 / -1; }
 .shipping-product.unbound { border-left: 4px solid var(--amber); }
 .shipping-product input { width: 18px; height: 18px; accent-color: var(--teal); }
 .shipping-product span, .shipping-product strong, .shipping-product small { display: block; }
