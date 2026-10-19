@@ -19,6 +19,7 @@ from .location import DataLocation
 from .errors import ToolboxError
 from .state import ACTIVE
 from .titles import Titles
+from .cost import CostServiceManager
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +31,7 @@ def load_core():
 
 
 class Application:
-    def __init__(self, paths, *, test_adapter=False, acceptance=False):
+    def __init__(self, paths, *, test_adapter=False, acceptance=False, cost_port=8765):
         self.window = None
         self.events = Events()
         self.store = Store(paths)
@@ -62,10 +63,11 @@ class Application:
             on_capture=self.capture.ingest, test_adapter=test_adapter)
         self.titles = Titles(self)
         self.operations.on_title_plan = self.titles.receive_plan
+        self.cost = CostServiceManager(paths, self.logs, port=cost_port)
 
     def choose_data_location(self):
         import webview
-        with self.scheduler._lock, self.operations._lock:
+        with self.scheduler._lock, self.operations._lock, self.cost._lock:
             if self.operations._runs or self.scheduler._runs or any(
                     self.store.list_tasks(state=state, limit=1)['total'] for state in ACTIVE):
                 raise ToolboxError('BROWSER_BUSY', '请先结束运行、排队、暂停任务和页面读取，再更改数据位置。')
@@ -79,6 +81,7 @@ class Application:
             return self.location.request(target)
 
     def shutdown(self):
+        self.cost.shutdown()
         self.operations.shutdown()
         self.scheduler.shutdown()
         self.browser.close()

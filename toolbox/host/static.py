@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from uuid import uuid4
+import json
 from .capture import IMAGE_DOMAINS
 
 
@@ -11,6 +12,15 @@ class StaticServer:
         assets = {f'/{token}/{name}': ((directory / name).read_bytes(), mime) for name, mime in (
             ('index.html', 'text/html; charset=utf-8'), ('app.js', 'text/javascript; charset=utf-8'),
             ('style.css', 'text/css; charset=utf-8'))}
+        if (directory / 'cost').is_dir():
+            for name, mime in (('app.js', 'text/javascript; charset=utf-8'),
+                    ('refresh_model.js', 'text/javascript; charset=utf-8'),
+                    ('shipping_filters.js', 'text/javascript; charset=utf-8'), ('styles.css', 'text/css; charset=utf-8')):
+                assets[f'/{token}/cost/{name}'] = ((directory / 'cost' / name).read_bytes(), mime)
+            template = (directory / 'cost/index.html').read_text(encoding='utf-8')
+            assets[f'/{token}/cost/template.js'] = (
+                ('globalThis.ToolboxCostTemplate = ' + json.dumps(template, ensure_ascii=False) + ';').encode('utf-8'),
+                'text/javascript; charset=utf-8')
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 item = assets.get(self.path)

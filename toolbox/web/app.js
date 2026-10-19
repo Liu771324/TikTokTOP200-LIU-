@@ -39,6 +39,7 @@ const state = {
   titleOffset: 0,
 };
 const content = $("#content");
+let costView = null;
 function el(tag, text, className) {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -67,7 +68,7 @@ function notice(text, error = false) {
 }
 async function call(action, payload = {}) {
   const result = await window.pywebview.api.invoke(action, payload);
-  if (!result.ok) throw Error(result.error.message);
+  if (!result.ok) { const error = Error(result.error.message); error.code = result.error.code; throw error; }
   return result.data;
 }
 const toolName = (id) => state.tools.find((t) => t.toolId === id)?.name || id;
@@ -131,10 +132,29 @@ async function navigate(view) {
     "video-ranking": "按趋势条件采集商品视频，视频与文案集中管理。",
     "manual-video": "读取当前页或粘贴分享链接，勾选后下载。",
     "product-title": "选择标题表格，核对具体商品的新旧标题后确认修改。",
+    "cost-assistant": "导入成本目录，维护商品对应、基础服务费和运费模板。",
   }[view];
   await render();
 }
 async function render() {
+  const isCost = state.view === 'cost-assistant';
+  content.hidden = isCost;
+  $('#cost-content').hidden = !isCost;
+  if (isCost) {
+    if (!costView) {
+      costView = globalThis.ToolboxCostMount($('#cost-host'), async (action, parameters = {}) => {
+        try {
+          let data;
+          if (action === 'choose_file') data = await call('cost.choose_file', parameters);
+          else if (action === 'open_logs') data = await call('cost.open_logs');
+          else data = await call('cost.invoke', {action, parameters});
+          return {ok: true, result: data};
+        } catch (error) { return {ok: false, error: error.message, uncertain: error.code === 'COST_RESULT_UNCERTAIN'}; }
+      });
+    } else costView.resume();
+    return;
+  }
+  costView?.pause();
   if (state.view === "tasks") return tasks();
   if (state.view === "storage") return storage();
   if (state.view === "manual-video") return capture();
@@ -923,6 +943,10 @@ async function storage() {
     logs: "运行日志",
     browser: "平台登录资料",
     database: "索引与其他",
+    cost: "成本业务库与导出",
+    costBackups: "成本恢复备份",
+    costLogs: "成本运行日志",
+    costTemporary: "成本预览临时资料",
   })) {
     const metric = el("div", undefined, "metric");
     metric.append(el("strong", bytes(usage[key] || 0)), el("span", title));
@@ -1063,7 +1087,7 @@ async function initialize() {
         ),
       );
     $("#refresh").addEventListener("click", () =>
-      render().catch((e) => notice(e.message, true)),
+      (state.view === 'cost-assistant' ? costView?.refresh() : render()).catch((e) => notice(e.message, true)),
     );
     $("#open-browser").addEventListener("click", async () => {
       try {
@@ -1078,6 +1102,8 @@ async function initialize() {
       }
     });
     $("#quit").addEventListener("click", () => call("app.request_exit"));
+    $('#cost-extension-folder').addEventListener('click', () => call('cost.open_extension').catch(e => notice(e.message, true)));
+    $('#cost-extension-page').addEventListener('click', () => call('browser.open', {source: 'cost-extension'}).catch(e => notice(e.message, true)));
     $("#dialog-close").addEventListener("click", () => $("#dialog").close());
     $("#dialog").addEventListener("close", () => {
       if ($("#dialog").dataset.kind !== "task") return;

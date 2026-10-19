@@ -2,6 +2,7 @@ from .errors import ToolboxError
 from .files import clipboard
 
 FIELDS = {
+    'cost.invoke': {'action', 'parameters'}, 'cost.choose_file': {'kind'}, 'cost.open_extension': set(), 'cost.open_logs': set(),
     'title.choose_input': set(), 'title.preview': {'inputId', 'shops', 'productStatus'},
     'title.plan_page': {'token', 'offset', 'limit'}, 'title.create': {'token'},
     'title.cancel_preview': {'operationId'},
@@ -50,6 +51,24 @@ class Bridge:
     def _dispatch(self, action, p):
         a = self._app
         offset, limit = p.get('offset', 0), p.get('limit', 50)
+        if action == 'cost.invoke':
+            from toolbox.cost_worker import PUBLIC_ACTIONS
+            if p.get('action') not in PUBLIC_ACTIONS or type(p.get('parameters', {})) is not dict:
+                raise ToolboxError('INVALID_PARAMETERS', '不支持此成本操作或参数。')
+            return a.cost.invoke(p['action'], p.get('parameters', {}))
+        if action == 'cost.choose_file':
+            return a.cost.choose_file(a.window, p['kind'])
+        if action == 'cost.open_extension':
+            import os
+            from .application import ROOT
+            os.startfile(ROOT / 'toolbox/browser-extension/cost')
+            return {}
+        if action == 'cost.open_logs':
+            import os
+            path = a.store.paths.resolve('cost/logs')
+            path.mkdir(parents=True, exist_ok=True)
+            os.startfile(path)
+            return {}
         if action == 'app.get_state':
             return {'version': '0.1.0', 'tools': list(a.descriptors.values()), 'browser': a.browser.state()}
         if action == 'app.show':
@@ -83,6 +102,8 @@ class Bridge:
         if action == 'title.cancel_preview':
             return a.operations.cancel_title_preview(p['operationId'])
         if action == 'tasks.create':
+            if p['toolId'] == 'cost-assistant':
+                raise ToolboxError('UNSUPPORTED_OPERATION', '请在成本助手内预览并确认资料更新。')
             if p['toolId'] == 'product-title':
                 raise ToolboxError('UNSUPPORTED_OPERATION', '请先预览商品修改，再确认创建标题任务。')
             parameters = p.get('parameters', {})

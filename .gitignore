@@ -1,6 +1,7 @@
 # Local assistant and tool state
 .claude/
 .gstack/
+.tmp/
 
 # Dependencies and local environments
 **/node_modules/

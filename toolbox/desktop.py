@@ -104,7 +104,8 @@ def main(acceptance_runner=None):
     from PIL import Image, ImageDraw
     contain_current_process()
     fixture_smoke = options.smoke and not getattr(sys, 'frozen', False)
-    app = Application(paths, test_adapter=fixture_smoke, acceptance=options.acceptance)
+    app = Application(paths, test_adapter=fixture_smoke, acceptance=options.acceptance,
+                      cost_port=0 if options.smoke else 8765)
     static = StaticServer(ROOT / 'toolbox/web')
     exiting = threading.Event()
     smoke_errors = []
@@ -166,6 +167,8 @@ def main(acceptance_runner=None):
                     time.sleep(.05)
                 assert window.evaluate_js("document.querySelectorAll('#tools button').length") == len(app.descriptors)
                 assert bridge.invoke('app.get_state')['ok']
+                cost_state = bridge.invoke('cost.invoke', {'action': 'get_state'})
+                assert cost_state['ok'] and cost_state['data']['owns_service']
                 assert not bridge.invoke('execute', {'command': 'arbitrary'})['ok']
                 close_window()
                 show()
@@ -190,6 +193,7 @@ def main(acceptance_runner=None):
                         pass
                 print(json.dumps({'desktopLoaded': True, 'trayCreated': icon.visible, 'singleInstance': True,
                                   'hideRestore': True, 'bridgeWhitelist': True, 'worker': 'ready',
+                                  'costWorker': 'ready',
                                   'fixtureTask': 'completed' if fixture_smoke else 'not included'}), flush=True)
             except Exception as exc:
                 smoke_errors.append(exc)

@@ -1,6 +1,6 @@
 # 电商工具箱
 
-这里是桌面工具箱实现目录，包含桌面、托盘、统一任务/浏览器调度、结果存储和五个业务入口。本轮0.1.6加入商品标题，状态与证据见[接入记录](../docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)。商机中心统一使用Python API引擎，已接入业务模块集中于`engines`；清理、控制及恢复见[重组记录](../docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)，人工工作台见[实施记录](../docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。成本助手本轮仅评估，未进入工具列表。
+这里是桌面工具箱实现目录，包含桌面、托盘、统一任务/浏览器调度、结果存储和六个业务入口。本轮0.1.6加入商品标题，状态与证据见[接入记录](../docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)。商机中心统一使用Python API引擎，已接入业务模块集中于`engines`；清理、控制及恢复见[重组记录](../docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)，人工工作台见[实施记录](../docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。成本助手已接入共享持久后台，七个内部页面使用独立成本库；详见[接入记录](../docs/TOOLBOX_COST_INTEGRATION_EXECUTION.md)。
 
 普通用户见[使用说明](用户使用说明.md)；构建与安装验收见[Windows 构建说明](windows/README.md)。
 
@@ -43,3 +43,5 @@ node --test toolbox/tests/sdk.test.cjs
 Node worker的`--test-adapter`只用于本地公共验证；生产Node处理TOP200、两种视频操作和商品标题，Python处理商机中心。冻结程序的`--business-worker`为宿主隐藏子进程入口，不创建桌面窗口。候选视频登记必须提供实际的视频检查器；测试替身不能用于发布。旧DOM商机结果只读兼容，继续/重试前拒绝不兼容检查点，不转换或覆盖旧任务。
 
 完整依据见 [接口约定](../docs/TOOLBOX_V1_CONTRACTS.md) 和 [实施清单](../docs/TOOLBOX_V1_EXECUTION.md)。
+
+成本核心位于 `engines/cost`，扩展位于 `browser-extension/cost`，正式界面位于 `web/cost`。`cost_worker.py` 为持久隐藏后台，退出等待资料操作完成；不使用采集 worker 的强杀超时。`engines/cost/webview_static` 保留八页开发资源及人工核验流程，安装包仅收 `web/cost` 的七页正式资源。

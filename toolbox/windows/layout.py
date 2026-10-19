@@ -18,14 +18,18 @@ BUSINESS_FILES = {
 }
 NODE_FILES = ('worker.cjs', 'sdk.cjs', 'browser-client.cjs', 'douyin-page.cjs',
     'adapters/top200.cjs', 'adapters/video-ranking.cjs', 'adapters/manual-video.cjs', 'adapters/product-title.cjs')
-WEB_FILES = ('index.html', 'app.js', 'style.css')
-PYTHON_FILES = ('toolbox/python_worker.py', 'toolbox/engines/__init__.py',
+WEB_FILES = ('index.html', 'app.js', 'style.css', 'cost/index.html', 'cost/app.js',
+    'cost/styles.css', 'cost/refresh_model.js', 'cost/shipping_filters.js')
+PYTHON_FILES = ('toolbox/python_worker.py', 'toolbox/cost_worker.py', 'toolbox/engines/__init__.py',
     'toolbox/engines/business/__init__.py', 'toolbox/engines/business/adapter.py',
     'toolbox/engines/business/parser.py', 'toolbox/engines/business/transport.py',
     'toolbox/engines/business/report.py', 'toolbox/engines/downloader/__init__.py')
 SOURCE_FILES = tuple(f'{directory}/{name}' for directory, names in BUSINESS_FILES.items() for name in names) + tuple(
     f'toolbox/node/{name}' for name in NODE_FILES) + tuple(f'toolbox/web/{name}' for name in WEB_FILES) + (
         'toolbox/tools.json', CORE, 'toolbox/THIRD_PARTY_NOTICES.md', 'toolbox/engines/downloader/THIRD_PARTY_NOTICES.md') + PYTHON_FILES
+COST_FILES = ('toolbox/engines/cost/data/douyin_service_fee_2026.json',) + tuple(
+    f'toolbox/browser-extension/cost/{name}' for name in ('manifest.json', 'background.js', 'content.js', 'core.js', 'panel.js'))
+SOURCE_FILES += COST_FILES
 RUNTIME_LICENSES = ('python', 'proxy_tools')
 FROZEN_DATA_FILES = tuple(name for name in SOURCE_FILES if not name.endswith('.py'))
 REQUIRE = re.compile(r"\brequire\s*\(\s*['\"]([^'\"]+)['\"]\s*\)")

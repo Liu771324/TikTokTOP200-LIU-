@@ -15,6 +15,8 @@ from .processes import start_process
 from .resources import ResourceQueue
 
 SOURCES = {
+    'cost-assistant': 'https://fxg.jinritemai.com/ffa/mshop/homepage/index',
+    'cost-extension': 'edge://extensions/',
     'product-title': 'https://fxg.jinritemai.com/ffa/mshop/homepage/index',
     'title-platform': 'https://xiaozhu.huanhou.cn/c/combainSearch/index',
     'business-center': 'https://fxg.jinritemai.com/ffa/bu/NewBusinessCenter',

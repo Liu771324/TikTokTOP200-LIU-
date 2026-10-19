@@ -25,9 +25,9 @@
 | 榜单与视频 | 自动短视频 | 视频和文案整理，已接入工具箱 | [工具箱使用说明](toolbox/用户使用说明.md) |
 | 榜单与视频 | 人工视频工作台 | 双来源选取、提取链接及下载 | [工具箱使用说明](toolbox/用户使用说明.md) |
 | 商品与成本 | 商品标题工作台 | 已接入：预览具体商品并确认批量改标题 | [工具箱说明](toolbox/用户使用说明.md) |
-| 商品与成本 | 成本助手 | 聚水潭成本价同步和抖店只读成本辅助 | [工具说明](<Cost Accounting(成本价）/README.md>) |
+| 商品与成本 | 成本助手 | 已接入：通用成本导入、商品对应、服务费、运费与只读成本扩展 | [工具说明](docs/cost/README.md) |
 
-已接入工具核心统一存放于 `toolbox/engines/{business,top200,video,downloader,product-title}`；旧独立入口已清理。历史业务文件经校验归档在本机 `local-archive/legacy-tools`，标题表格、历史报告及旧备份在其中的 `product-title` 子目录，该目录不进入Git或安装包。净含量独立项目已由用户移出，未作为工具箱功能接入。Git分支表示开发工作，`toolbox-v0.1.7`保留删除旧标题目录前的源码回溯点。
+已接入工具核心统一存放于 `toolbox/engines/{business,top200,video,downloader,product-title,cost}`；旧独立入口已清理。历史业务文件经校验归档在本机 `local-archive/legacy-tools`，标题表格、历史报告及旧备份在其中的 `product-title` 子目录，该目录不进入Git或安装包。净含量独立项目已由用户移出，未作为工具箱功能接入。Git分支表示开发工作，`toolbox-v0.1.7`保留删除旧标题目录前的源码回溯点。
 
 ## 使用方式
 

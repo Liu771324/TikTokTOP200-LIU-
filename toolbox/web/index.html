@@ -44,6 +44,14 @@
           <p>请稍候。</p>
         </div>
       </section>
+      <section id="cost-content" hidden>
+        <details class="panel">
+          <summary>浏览器扩展设置</summary>
+          <p>首次使用：在工具箱专用 Edge 的扩展管理页开启开发人员模式，加载扩展目录。已加载旧版时点击“重新加载”；迁移数据后在扩展中重新核对并配对数据源。</p>
+          <div class="header-actions"><button id="cost-extension-folder">打开扩展目录</button><button id="cost-extension-page">打开扩展管理</button></div>
+        </details>
+        <div id="cost-host"></div>
+      </section>
       <footer>
         <span>结果保存在本机，按需导出</span
         ><span>关闭窗口后继续运行 · 托盘可恢复</span>
@@ -53,6 +61,10 @@
       <div id="dialog-content"></div>
       <div class="dialog-actions"><button id="dialog-close">关闭</button></div>
     </dialog>
+    <script src="cost/refresh_model.js"></script>
+    <script src="cost/shipping_filters.js"></script>
+    <script src="cost/template.js"></script>
+    <script src="cost/app.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

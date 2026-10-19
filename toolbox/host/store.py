@@ -522,5 +522,10 @@ class Store:
             group = {"media": "media", "scratch": "cache", "logs": "logs", "browser-profile": "browser"}.get(first, "database")
             if first == "tasks":
                 group = "results" if "/results/" in relative else "recovery"
+            if first == "cost":
+                group = ("costBackups" if path.name.endswith('.bak') or '/recovery/' in relative else
+                         "costLogs" if '/logs/' in relative else
+                         "costTemporary" if '/inputs/' in relative or '/tmp/' in relative else "cost")
+                result.setdefault(group, 0)
             result[group] += path.stat().st_size
         return result
