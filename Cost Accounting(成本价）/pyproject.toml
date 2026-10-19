@@ -1,6 +1,6 @@
 [project]
 name = "jushuitan-cost-sync"
-version = "0.1.0"
+version = "0.2.0"
 description = "聚水潭商品成本价本地同步工具"
 requires-python = ">=3.13"
 dependencies = [

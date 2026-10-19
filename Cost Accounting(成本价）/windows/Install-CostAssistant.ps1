@@ -230,6 +230,9 @@ foreach ($pair in @(
     Copy-Item -LiteralPath $pair.Source -Destination $pair.Target -Recurse
 }
 Confirm-ExtensionFilesMatch
+if (Test-Path -LiteralPath (Join-Path $packagePath 'build-info.json') -PathType Leaf) {
+    Copy-Item -LiteralPath (Join-Path $packagePath 'build-info.json') -Destination (Join-Path $installPath 'build-info.json') -Force
+}
 
 foreach ($seedName in @("cost_accounting.sqlite3", "enabled_product_costs.xlsx")) {
     $source = Join-Path $seedDataSource $seedName

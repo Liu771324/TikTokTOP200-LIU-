@@ -27,7 +27,7 @@ if ($LASTEXITCODE -ne 0) {
 foreach ($target in @($buildRoot, $packageRoot, $archivePath)) {
     if (Test-Path -LiteralPath $target) {
         $resolved = (Resolve-Path -LiteralPath $target).Path
-        if (-not $resolved.StartsWith($projectPath, [StringComparison]::OrdinalIgnoreCase)) {
+        if (-not $resolved.StartsWith($projectPath.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
             throw "Build cleanup target is outside the project directory: $resolved"
         }
         Remove-Item -LiteralPath $resolved -Recurse -Force
@@ -54,6 +54,7 @@ if ($LASTEXITCODE -ne 0) {
     --specpath $buildRoot `
     --collect-submodules cost_sync `
     --add-data "$releaseAssets;cost_sync\webview_static" `
+    --add-data "$(Join-Path $projectPath 'cost_sync\data');cost_sync\data" `
     --hidden-import webview.platforms.edgechromium `
     --hidden-import requests `
     --exclude-module tkinter `
@@ -74,13 +75,27 @@ $extensionFiles = @(
 foreach ($extensionFile in $extensionFiles) {
     Copy-Item -LiteralPath (Join-Path $projectPath "browser_extension\$extensionFile") -Destination $extensionTarget
 }
-New-Item -ItemType Directory -Path $seedTarget -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $projectPath "storage\test\cost_accounting.sqlite3") -Destination $seedTarget
-Copy-Item -LiteralPath (Join-Path $projectPath "storage\test\enabled_product_costs.xlsx") -Destination $seedTarget
+& $PythonExecutable (Join-Path $projectPath "windows\prepare_release_seed.py") $seedTarget
+if ($LASTEXITCODE -ne 0) {
+    throw "Empty release seed preparation failed."
+}
 Copy-Item -LiteralPath (Join-Path $projectPath "windows\Install-CostAssistant.ps1") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $projectPath "windows\Install-CostAssistant.cmd") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $projectPath "windows\Show-EdgeExtensionSetup.ps1") -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $projectPath "README.md") -Destination (Join-Path $packageRoot "README.txt")
+
+$appVersion = & $PythonExecutable -c "import sys; sys.path.insert(0, sys.argv[1]); from cost_sync import __version__; print(__version__)" $projectPath
+if ($LASTEXITCODE -ne 0) { throw "Application version lookup failed." }
+$sourceRevision = & git -C $projectPath rev-parse HEAD
+if ($LASTEXITCODE -ne 0) { throw "Source revision lookup failed." }
+$extensionManifest = Get-Content -LiteralPath (Join-Path $extensionTarget 'manifest.json') -Raw | ConvertFrom-Json
+@{
+    app_version = [string]$appVersion
+    extension_version = [string]$extensionManifest.version
+    source_revision = [string]$sourceRevision
+    built_at_utc = [DateTime]::UtcNow.ToString('o')
+    profile = 'standalone-seven-pages-empty-seed'
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $packageRoot 'build-info.json') -Encoding UTF8
 
 Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $archivePath -CompressionLevel Optimal
 Write-Output "Package created: $packageRoot"
