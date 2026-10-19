@@ -1154,7 +1154,7 @@ class EdgeExtensionSetupHelperTests(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stderr)
         self.assertIn("edge://extensions/", completed.stdout)
         self.assertIn("kbdiohjlofljeafaddehaeciappaefka", completed.stdout)
-        self.assertIn("Expected extension version: 0.1.0", completed.stdout)
+        self.assertIn("Expected extension version: 0.1.1", completed.stdout)
         self.assertIn("EXTENSION_NOT_LOADED", completed.stdout)
         self.assertIn("EXTENSION_VERSION_MISMATCH", completed.stdout)
         self.assertIn("EXTENSION_READY", completed.stdout)
