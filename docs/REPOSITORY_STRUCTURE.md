@@ -10,8 +10,8 @@
 
 ## 目录规则
 
-- 已接入工具的业务代码在`toolbox/engines/{business,top200,video,downloader,product-title}`，统一界面、宿主、调度、测试和发布脚本在`toolbox`。商品标题接入及原独立目录清理见[方案](TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)；旧表格、报告与备份归档在本机`local-archive/legacy-tools/product-title`。
-- 搜索词和成本助手未接入，仍保留独立目录；成本助手先按[评估](TOOLBOX_COST_INTEGRATION_ASSESSMENT.md)稳定化。搜索词使用的共用Edge模块在`toolbox/engines/shared/edge.js`。历史业务结果经hash核对保存在本机`local-archive/legacy-tools`，不提交Git、不进入安装包。
+- 已接入工具的业务代码在`toolbox/engines/{business,top200,video,downloader,product-title,cost}`，统一界面、宿主、调度、测试和发布脚本在`toolbox`。商品标题接入及原独立目录清理见[方案](TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)；旧表格、报告与备份归档在本机`local-archive/legacy-tools/product-title`。
+- 搜索词尚未接入，保留独立目录。成本助手已完成稳定化和接入，核心、正式界面、测试和说明已迁入工具箱；独立安装包和原始资料经校验归档，旧开发目录已删除，见[接入记录](TOOLBOX_COST_INTEGRATION_EXECUTION.md)。搜索词使用的共用Edge模块在`toolbox/engines/shared/edge.js`。历史业务结果经hash核对保存在本机`local-archive/legacy-tools`，不提交Git、不进入安装包。
 - 总仓根目录的 `README.md` 是源码工具索引和工具箱文档入口。独立工具按自己的说明启动；工具箱的运行和发布约定以技术方案为准。
 - 新工具应有独立目录和 `README.md`，说明用途、适用系统、运行要求、启动方法和数据保存位置。
 - 保持已有工具目录名和启动入口稳定。确需改名或迁移时，同步更新总索引和工具内链接。
