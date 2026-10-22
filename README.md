@@ -2,7 +2,7 @@
 
 这个总仓收录面向抖音电商工作的本地脚本和小工具。小叶电商工具箱已整合商机中心、TOP200、自动短视频采集、人工视频工作台、商品标题工作台和成本助手；已接入的业务源码集中在 `toolbox/engines`。
 
-**小叶电商工具箱版本：0.1.9，已更新本机安装版。** 本版修复罗盘封面读取时丢失签名参数的问题，并应用用户提供的图标和新名称；范围及交付证据见[封面与品牌更新记录](docs/TOOLBOX_COVERS_AND_BRANDING.md)。成本助手已在 0.1.8 接入，见[接入记录](docs/TOOLBOX_COST_INTEGRATION_EXECUTION.md)。标题工作台提供系统选表、具体商品新旧标题预览、确认修改、停止核对与报告，不自动继续或重放写入，见[实施记录](docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)。商机中心使用 Python API，详见[重组记录](docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)；人工视频工作台支持罗盘/抖音读取，见[记录](docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。普通用户见[工具箱使用说明](toolbox/用户使用说明.md)，开发见 [toolbox 说明](toolbox/README.md)。搜索词尚未接入；原独立商品标题和成本助手开发目录已按用户授权清理。
+**小叶电商工具箱版本：0.1.10，已更新本机安装版。** 本版补齐工具箱固定任务栏身份及快捷方式配置，修复任务栏沿用 Python 图标的问题，见[任务栏图标修复记录](docs/TOOLBOX_TASKBAR_ICON_FIX.md)。0.1.9 修复罗盘封面读取时丢失签名参数的问题，并应用用户提供的图标和新名称；范围及交付证据见[封面与品牌更新记录](docs/TOOLBOX_COVERS_AND_BRANDING.md)。成本助手已在 0.1.8 接入，见[接入记录](docs/TOOLBOX_COST_INTEGRATION_EXECUTION.md)。标题工作台提供系统选表、具体商品新旧标题预览、确认修改、停止核对与报告，不自动继续或重放写入，见[实施记录](docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)。商机中心使用 Python API，详见[重组记录](docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)；人工视频工作台支持罗盘/抖音读取，见[记录](docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。普通用户见[工具箱使用说明](toolbox/用户使用说明.md)，开发见 [toolbox 说明](toolbox/README.md)。搜索词尚未接入；原独立商品标题和成本助手开发目录已按用户授权清理。
 
 本机统一为`D:\前端\ai\电商工具箱\程序`和`D:\前端\ai\电商工具箱\数据`；0.1.6安装时总目录约592MiB，程序文件较0.1.5仅增加约7.8MiB，数据量随使用变化，见[当前交付记录](docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)。源码仓库单独保留；此前迁移和后续小于5GB的程序容量目标见[统一目录与容量记录](docs/TOOLBOX_UNIFIED_DIRECTORY.md)。
 
