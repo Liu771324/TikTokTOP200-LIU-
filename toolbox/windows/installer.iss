@@ -44,8 +44,8 @@ Source: "{#BootstrapperPath}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："; Flags: unchecked
 
 [Icons]
-Name: "{group}\小叶电商工具箱"; Filename: "{app}\ScriptAllToolbox.exe"
-Name: "{userdesktop}\小叶电商工具箱"; Filename: "{app}\ScriptAllToolbox.exe"; Tasks: desktopicon
+Name: "{group}\小叶电商工具箱"; Filename: "{app}\ScriptAllToolbox.exe"; AppUserModelID: "ScriptAll.XiaoyeToolbox"; IconFilename: "{app}\_internal\toolbox\windows\icon.ico"
+Name: "{userdesktop}\小叶电商工具箱"; Filename: "{app}\ScriptAllToolbox.exe"; AppUserModelID: "ScriptAll.XiaoyeToolbox"; IconFilename: "{app}\_internal\toolbox\windows\icon.ico"; Tasks: desktopicon
 
 [InstallDelete]
 Type: files; Name: "{userprograms}\电商工具箱\电商工具箱.lnk"

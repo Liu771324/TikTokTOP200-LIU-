@@ -64,6 +64,9 @@ def main(acceptance_runner=None):
         if result.returncode:
             raise SystemExit(result.returncode)
         return
+    set_app_id = ctypes.OleDLL('shell32').SetCurrentProcessExplicitAppUserModelID
+    set_app_id.argtypes = [ctypes.c_wchar_p]
+    set_app_id('ScriptAll.XiaoyeToolbox')
     location = None if options.smoke else DataLocation(forbidden=(ROOT, Path(sys.executable).parent))
     # Keep the production identity stable across data moves and compatible with 0.1.1.
     identity = Path(options.smoke_data_root) if options.smoke else location.settings
