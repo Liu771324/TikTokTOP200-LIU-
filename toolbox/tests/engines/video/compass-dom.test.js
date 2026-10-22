@@ -189,13 +189,16 @@ function domPage({ popup = false, weak = false } = {}) {
   return page;
 }
 
-test('real DOM extraction builds snapshot identities and never persists signed media/cover URLs', async () => {
+test('real DOM extraction preserves signed cover URLs separately from stable identities', async () => {
   const page = domPage();
   const view = await compass.snapshot(page, 'fixture-page');
   assert.equal(view.rows[0].productName, '测试商品'); assert.equal(view.rows[0].cards[0].title, '实际文案');
   const items = compass.captureItems(view, 'fixture-page', page.url().split('?')[0]);
   assert.equal(items[0].publicUrl, 'https://www.douyin.com/video/123');
-  assert.equal(items[0].locator.videoId, '123'); assert.equal(JSON.stringify(items).includes('private'), false);
+  assert.equal(items[0].locator.videoId, '123');
+  assert.equal(items[0].details.coverUrl, 'https://fixture.invalid/cover?token=private');
+  assert.equal(view.rows[0].cards[0].cover, 'https://fixture.invalid/cover');
+  assert.equal(JSON.stringify({ ...items[0], details: undefined }).includes('private'), false);
   const card = compass.locate(view, items[0]);
   const player = await compass.playCard(page, card);
   assert.equal(player.videoUrl, 'https://media.fixture.invalid/video?token=private');

@@ -83,18 +83,17 @@ textarea:focus-visible {
 .brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 8px;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 16px;
   letter-spacing: 0.02em;
   padding: 0 6px 27px;
 }
 .brand-icon {
-  background: var(--ink);
-  color: white;
-  padding: 4px 10px;
-  border-radius: 8px;
-  font-size: 22px;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 .brand small {
   display: block;

@@ -11,7 +11,7 @@ class StaticServer:
         image_sources = ' '.join(f'https://{domain} https://*.{domain}' for domain in IMAGE_DOMAINS)
         assets = {f'/{token}/{name}': ((directory / name).read_bytes(), mime) for name, mime in (
             ('index.html', 'text/html; charset=utf-8'), ('app.js', 'text/javascript; charset=utf-8'),
-            ('style.css', 'text/css; charset=utf-8'))}
+            ('style.css', 'text/css; charset=utf-8'), ('icon.png', 'image/png'))}
         if (directory / 'cost').is_dir():
             for name, mime in (('app.js', 'text/javascript; charset=utf-8'),
                     ('refresh_model.js', 'text/javascript; charset=utf-8'),

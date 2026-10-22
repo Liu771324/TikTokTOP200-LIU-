@@ -35,5 +35,5 @@ a.binaries = [item for item in a.binaries if not omit_extra_runtime(item[0])]
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name=APP_NAME, debug=False,
     bootloader_ignore_signals=False, strip=False, upx=False, console=False,
-    contents_directory='_internal', version=os.environ['TOOLBOX_VERSION_FILE'])
+    contents_directory='_internal', version=os.environ['TOOLBOX_VERSION_FILE'], icon=str(WINDOWS / 'icon.ico'))
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name=APP_NAME)

@@ -27,7 +27,7 @@ function identity(card) {
   let cover = '';
   try { const url = new URL(card.cover); cover = url.origin + url.pathname; } catch { /* no observed cover */ }
   const title = clean(card.title);
-  return { ...card, cover, title, publicUrl, videoId: videoId || null,
+  return { ...card, cover, coverUrl: card.cover || '', title, publicUrl, videoId: videoId || null,
     cardKey: hash(videoId ? ['video', videoId] : cover ? ['cover', cover] : ['title', title]), strong: Boolean(videoId || publicUrl), observable: Boolean(videoId || publicUrl || title || cover) };
 }
 
@@ -140,7 +140,7 @@ function captureItems(view, pageId, sourcePage) {
       const mediaUrl = view.player?.videoId && view.player.videoId === card.videoId && view.player.url?.startsWith('https://') ? view.player.url : null;
       items.push({ sourceKey: card.strong ? `compass:video:${card.videoId}` : `compass:${row.productKey}:${videoKey}:${card.cardKey}`, sourceKind: 'compass_ranking',
         sourcePage, providerId: card.videoId, title: card.title || '视频标题未读取', publicUrl: card.publicUrl, ...(mediaUrl ? { mediaUrl } : {}),
-        details: { productName: row.productName, shopName: row.shopName, coverUrl: card.cover || '', sourceLabel: '罗盘短视频榜',
+        details: { productName: row.productName, shopName: row.shopName, coverUrl: card.coverUrl || '', sourceLabel: '罗盘短视频榜',
           titleKnown: Boolean(card.title), videoIndex: row.cards.indexOf(card) + 1 },
         locator: { pageId, productKey: row.productKey, ...(row.productId ? { productId: row.productId } : {}),
           ...(card.videoId ? { videoId: card.videoId } : {}), videoKey, cardKey: card.cardKey, category: view.category, rankingType: 'video' } });

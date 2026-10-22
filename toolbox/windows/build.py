@@ -52,9 +52,9 @@ def file_version_text(version):
   ffi=FixedFileInfo(filevers={numbers}, prodvers={numbers}, mask=0x3f, flags=0x0,
     OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
   kids=[StringFileInfo([StringTable('080404B0', [
-    StringStruct('CompanyName', 'Script All'), StringStruct('FileDescription', '电商工具箱'),
+    StringStruct('CompanyName', 'Script All'), StringStruct('FileDescription', '小叶电商工具箱'),
     StringStruct('FileVersion', '{version}'), StringStruct('ProductVersion', '{version}'),
-    StringStruct('ProductName', '电商工具箱'), StringStruct('OriginalFilename', '{APP_NAME}.exe')])]),
+    StringStruct('ProductName', '小叶电商工具箱'), StringStruct('OriginalFilename', '{APP_NAME}.exe')])]),
     VarFileInfo([VarStruct('Translation', [2052, 1200])])])
 '''
 

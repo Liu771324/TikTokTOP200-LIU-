@@ -34,7 +34,7 @@ def webview2_available():
 
 
 def main(acceptance_runner=None):
-    parser = argparse.ArgumentParser(description='电商工具箱')
+    parser = argparse.ArgumentParser(description='小叶电商工具箱')
     parser.add_argument('--smoke', action='store_true', help='开发验证：临时数据、测试工作者并自动退出')
     parser.add_argument('--smoke-data-root', help=argparse.SUPPRESS)
     parser.add_argument('--acceptance', action='store_true', help='源码开发验收：临时开放真实工具，使用正式用户数据')
@@ -88,20 +88,20 @@ def main(acceptance_runner=None):
         else:
             paths = DataPaths(Path(options.smoke_data_root))
     except (OSError, ToolboxError):
-        ctypes.windll.user32.MessageBoxW(None, '数据位置不可用或配置无法读取。请恢复原数据磁盘后重试；软件不会创建空库替代原数据。', '电商工具箱', 0x10)
+        ctypes.windll.user32.MessageBoxW(None, '数据位置不可用或配置无法读取。请恢复原数据磁盘后重试；软件不会创建空库替代原数据。', '小叶电商工具箱', 0x10)
         instance.close()
         if legacy_instance:
             legacy_instance.close()
         return
     if not webview2_available():
-        ctypes.windll.user32.MessageBoxW(None, '未找到 Microsoft Edge WebView2 Runtime。请从微软官网下载并安装 WebView2 运行时后重试。', '电商工具箱', 0x10)
+        ctypes.windll.user32.MessageBoxW(None, '未找到 Microsoft Edge WebView2 Runtime。请从微软官网下载并安装 WebView2 运行时后重试。', '小叶电商工具箱', 0x10)
         instance.close()
         if legacy_instance:
             legacy_instance.close()
         return
     import pystray
     import webview
-    from PIL import Image, ImageDraw
+    from PIL import Image
     contain_current_process()
     fixture_smoke = options.smoke and not getattr(sys, 'frozen', False)
     app = Application(paths, test_adapter=fixture_smoke, acceptance=options.acceptance,
@@ -113,7 +113,7 @@ def main(acceptance_runner=None):
     icon = None
     try:
         bridge = Bridge(app, static.url)
-        window = webview.create_window('电商工具箱', static.url, js_api=bridge, width=1280, height=820,
+        window = webview.create_window('小叶电商工具箱', static.url, js_api=bridge, width=1280, height=820,
                                       min_size=(1000, 640), background_color='#f2f5f8')
         app.window = app.files.window = window
         def show(*args):
@@ -144,12 +144,8 @@ def main(acceptance_runner=None):
             threading.Thread(target=finish_exit, daemon=True).start()
         app.show, app.request_exit = show, request_exit
         window.events.closing += close_window
-        image = Image.new('RGBA', (64, 64), '#153e57')
-        draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle((12, 21, 52, 49), radius=5, fill='#ffffff')
-        draw.rectangle((24, 13, 40, 23), outline='#ffffff', width=4)
-        draw.line((12, 32, 52, 32), fill='#2e9b83', width=4)
-        icon = pystray.Icon('ScriptAllToolbox', image, '电商工具箱', pystray.Menu(
+        image = Image.open(ROOT / 'toolbox/web/icon.png')
+        icon = pystray.Icon('ScriptAllToolbox', image, '小叶电商工具箱', pystray.Menu(
             pystray.MenuItem('打开工具箱', show, default=True), pystray.MenuItem('退出', request_exit)))
         threading.Thread(target=icon.run, daemon=True).start()
         instance.watch(show)
@@ -201,6 +197,7 @@ def main(acceptance_runner=None):
             finally:
                 finish_exit(False)
         webview.start(smoke, gui='edgechromium', debug=False, private_mode=False,
+                      icon=str(ROOT / 'toolbox/windows/icon.ico'),
                       storage_path=str(paths.resolve('webview-profile')))
         if smoke_errors:
             raise RuntimeError('桌面 smoke 未通过') from smoke_errors[0]

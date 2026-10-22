@@ -828,7 +828,7 @@ async function capture() {
     if (details.coverUrl) {
       const image = el("img"); image.src = details.coverUrl; image.loading = "lazy";
       image.alt = "视频封面"; image.referrerPolicy = "no-referrer";
-      image.addEventListener("error", () => { cover.replaceChildren(el("span", "封面不可用")); }); cover.append(image);
+      image.addEventListener("error", () => { cover.replaceChildren(el("span", "封面已失效，请重新读取当前页")); }); cover.append(image);
     } else cover.append(el("span", "暂无封面"));
     const info = el("div", undefined, "capture-video-info");
     info.append(el("small", [details.sourceLabel || (item.sourceKind === "compass_ranking" ? "罗盘" : "抖音"), details.videoIndex ? `第 ${details.videoIndex} 条` : "", details.duration].filter(Boolean).join(" · ")),

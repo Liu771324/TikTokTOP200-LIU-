@@ -1,4 +1,4 @@
-# 电商工具箱
+# 小叶电商工具箱
 
 这里是桌面工具箱实现目录，包含桌面、托盘、统一任务/浏览器调度、结果存储和六个业务入口。本轮0.1.6加入商品标题，状态与证据见[接入记录](../docs/TOOLBOX_PRODUCT_TITLE_INTEGRATION.md)。商机中心统一使用Python API引擎，已接入业务模块集中于`engines`；清理、控制及恢复见[重组记录](../docs/TOOLBOX_REORGANIZATION_PYTHON_BUSINESS.md)，人工工作台见[实施记录](../docs/TOOLBOX_MANUAL_VIDEO_WORKSPACE.md)。成本助手已接入共享持久后台，七个内部页面使用独立成本库；详见[接入记录](../docs/TOOLBOX_COST_INTEGRATION_EXECUTION.md)。
 

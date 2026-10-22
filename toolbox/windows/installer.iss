@@ -13,11 +13,11 @@
 
 [Setup]
 AppId=ScriptAllToolbox
-AppName=电商工具箱
+AppName=小叶电商工具箱
 AppVersion={#AppVersion}
 AppPublisher=Script All
 DefaultDirName={localappdata}\Programs\ScriptAllToolbox
-DefaultGroupName=电商工具箱
+DefaultGroupName=小叶电商工具箱
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
@@ -26,12 +26,14 @@ AppMutex=Local\ScriptAllToolbox.InstallGuard
 CloseApplications=no
 RestartApplications=no
 UsePreviousAppDir=yes
+UsePreviousGroup=no
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
 OutputBaseFilename=ScriptAllToolbox-{#AppVersion}-windows-x64
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=icon.ico
 UninstallDisplayIcon={app}\ScriptAllToolbox.exe
 
 [Files]
@@ -42,11 +44,16 @@ Source: "{#BootstrapperPath}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："; Flags: unchecked
 
 [Icons]
-Name: "{group}\电商工具箱"; Filename: "{app}\ScriptAllToolbox.exe"
-Name: "{userdesktop}\电商工具箱"; Filename: "{app}\ScriptAllToolbox.exe"; Tasks: desktopicon
+Name: "{group}\小叶电商工具箱"; Filename: "{app}\ScriptAllToolbox.exe"
+Name: "{userdesktop}\小叶电商工具箱"; Filename: "{app}\ScriptAllToolbox.exe"; Tasks: desktopicon
+
+[InstallDelete]
+Type: files; Name: "{userprograms}\电商工具箱\电商工具箱.lnk"
+Type: dirifempty; Name: "{userprograms}\电商工具箱"
+Type: files; Name: "{userdesktop}\电商工具箱.lnk"
 
 [Run]
-Filename: "{app}\ScriptAllToolbox.exe"; Description: "打开电商工具箱"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\ScriptAllToolbox.exe"; Description: "打开小叶电商工具箱"; Flags: nowait postinstall skipifsilent
 
 [Code]
 const
